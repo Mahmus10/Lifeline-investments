@@ -17,12 +17,7 @@ const LOCK_DAYS = 8;
 const REF_BONUS = 0.04; // 4%
 const JWT_SECRET = "lifeline_secret_2026";
 
-const db = mysql.createConnection({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME
-});
+const db = mysql.createConnection(process.env.DATABASE_URL);
 
 app.get('/', (req,res) => res.send("Lifeline Investments API Running"));
 
