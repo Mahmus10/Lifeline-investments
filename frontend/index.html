@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Lifeline Investments</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: Arial; background: #0a0a0a; color: white; text-align: center; padding: 20px; }
+    .card { background: #1a1a1a; padding: 20px; border-radius: 10px; margin: 15px auto; max-width: 400px; }
+    .btn { background: #00ff88; color: black; padding: 12px 20px; border: none; border-radius: 8px; font-weight: bold; width: 90%; }
+    input { padding: 12px; width: 85%; margin: 8px; border-radius: 5px; border: none; background: #2a2a2a; color: white; }
+    .green { color: #00ff88; }
+    .red { color: #ff4444; }
+  </style>
+</head>
+<body>
+  <h1 class="green">LIFELINE INVESTMENTS</h1>
+  <p>Earn 5% Daily Income</p>
+  
+  <div class="card">
+    <h3>Platform Rules</h3>
+    <p>Min Deposit: <b>20,000 UGX</b></p>
+    <p>Min Withdraw: <b>5,000 UGX</b></p>
+    <p>Interest Withdraw: <b>3,000 UGX+</b> Daily</p>
+    <p>Deposit Lock: <b>8 Days</b></p>
+    <p>Referral: <b>4%</b></p>
+    <p class="red">Deposit To: <b>0740383797</b></p>
+    <p>Telegram: <b>0740383797</b></p>
+  </div>
+
+  <div class="card">
+    <h3>Create Account</h3>
+    <input type="text" id="name" placeholder="Full Name"><br>
+    <input type="text" id="phone" placeholder="Phone Number"><br>
+    <input type="password" id="password" placeholder="Password"><br>
+    <input type="text" id="referral" placeholder="Referral Code - Optional"><br>
+    <button class="btn" onclick="register()">Register Now</button>
+  </div>
+
+  <script>
+    const API = "https://your-backend-url.railway.app"
+    function register(){
+      alert("Connecting to backend after deployment...")
+    }
+  </script>
+</body>
+</html>
