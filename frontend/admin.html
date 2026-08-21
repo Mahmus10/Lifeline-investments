@@ -1,0 +1,20 @@
+<!DOCTYPE html><html><body style="background:black;color:white;padding:20px">
+<h2>Admin - Pending Deposits</h2>
+<div id="list"></div>
+<script>
+async function load(){
+  let r=await fetch('/api/admin/deposits'); let data=await r.json();
+  document.getElementById('list').innerHTML=data.map(d=>`
+    <div id="row-${d.id}" style="background:#222;padding:10px;margin:10px;border-radius:10px;transition:0.5s">
+      ${d.phone} - ${d.amount} UGX - ${d.airtelNo}
+      <button onclick="approve(${d.id})" style="background:green;color:white;padding:5px 15px">Approve</button>
+    </div>`).join('');
+}
+async function approve(id){
+  await fetch('/api/admin/approve/'+id,{method:'POST'});
+  let row=document.getElementById('row-'+id);
+  row.style.opacity='0'; row.style.transform='translateX(100%)';
+  setTimeout(()=>row.remove(),500);
+}
+load();
+</script></body></html>
