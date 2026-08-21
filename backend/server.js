@@ -2,11 +2,9 @@ const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
-
 const app = express();
 app.use(cors());
-app.use(express.json({limit: '10mb'}));
-
+app.use(express.json({limit: '15mb'}));
 const pool = mysql.createPool({
   host: process.env.MYSQLHOST,
   user: process.env.MYSQLUSER,
@@ -17,89 +15,23 @@ const pool = mysql.createPool({
   connectionLimit: 10
 });
 
-function initDB(){
-  pool.query(`CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, fullName VARCHAR(100), phone VARCHAR(20) UNIQUE, password VARCHAR(255), balance DECIMAL(10,2) DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
-  pool.query(`CREATE TABLE IF NOT EXISTS deposits (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, amount DECIMAL(10,2), screenshot LONGTEXT, status VARCHAR(20) DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
-  pool.query(`CREATE TABLE IF NOT EXISTS investments (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, plan VARCHAR(50), amount DECIMAL(10,2), profit DECIMAL(10,2), status VARCHAR(20) DEFAULT 'active', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
-}
-initDB();
+// AUTO-FIX: Recreate deposits table with screenshot column
+pool.query("DROP TABLE IF EXISTS deposits");
+pool.query(`CREATE TABLE deposits (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, amount DECIMAL(10,2), screenshot LONGTEXT, status VARCHAR(20) DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+pool.query(`CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, fullName VARCHAR(100), phone VARCHAR(20) UNIQUE, password VARCHAR(255), balance DECIMAL(10,2) DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+pool.query(`CREATE TABLE IF NOT EXISTS investments (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, plan VARCHAR(50), amount DECIMAL(10,2), profit DECIMAL(10,2), status VARCHAR(20) DEFAULT 'active', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
 
-app.get('/', (req,res)=>{ res.send(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}.box{background:#1a1a1a;padding:25px;border-radius:15px;width:90%;max-width:350px}h1{color:#00ff88;text-align:center}input{width:100%;padding:12px;margin:8px 0;border-radius:8px;border:none;box-sizing:border-box}button{width:100%;padding:12px;background:#00ff88;border:none;border-radius:8px;font-weight:bold;margin-top:10px}</style></head><body><div class="box"><h1>LIFELINE INVESTMENTS</h1><h3>Create Account</h3><input id="name" placeholder="Full Name"><input id="phone" placeholder="Phone 07..."><input id="pass" type="password" placeholder="Password"><button onclick="reg()">Register</button><p id="msg"></p><hr><h3>Login</h3><input id="lphone" placeholder="Phone"><input id="lpass" type="password" placeholder="Password"><button onclick="log()">Login</button><p id="msg2"></p></div><script>async function reg(){const fullName=name.value,phone=document.getElementById('phone').value,password=pass.value;const r=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fullName,phone,password})});const d=await r.json();msg.innerText=d.message;}async function log(){const phone=lphone.value,password=lpass.value;const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,password})});const d=await r.json();msg2.innerText=d.message;if(r.ok){localStorage.setItem('user',JSON.stringify(d.user));location.href='/dashboard'}}</script></body></html>`); });
+app.get('/', (req,res)=>{ res.send(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}.box{background:#1a1a1a;padding:25px;border-radius:15px;width:90%;max-width:350px}h1{color:#00ff88;text-align:center}input{width:100%;padding:12px;margin:8px 0;border-radius:8px;border:none}button{width:100%;padding:12px;background:#00ff88;border:none;border-radius:8px;font-weight:bold;margin-top:10px}</style></head><body><div class="box"><h1>LIFELINE INVESTMENTS</h1><h3>Register</h3><input id="name" placeholder="Full Name"><input id="phone" placeholder="Phone"><input id="pass" type="password" placeholder="Password"><button onclick="reg()">Register</button><p id="msg"></p><hr><h3>Login</h3><input id="lphone" placeholder="Phone"><input id="lpass" type="password" placeholder="Password"><button onclick="log()">Login</button><p id="msg2"></p></div><script>async function reg(){const r=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fullName:name.value,phone:document.getElementById('phone').value,password:pass.value})});const d=await r.json();msg.innerText=d.message;}async function log(){const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:lphone.value,password:lpass.value})});const d=await r.json();msg2.innerText=d.message;if(r.ok){localStorage.setItem('user',JSON.stringify(d.user));location.href='/dashboard'}}</script></body></html>`); });
 
-app.get('/dashboard', (req,res)=>{ res.send(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#0a0a0a;color:#fff;font-family:sans-serif;padding:20px;margin:0}.card{background:#1a1a1a;padding:20px;border-radius:15px;max-width:420px;margin:auto}h1{color:#00ff88}button{padding:12px 18px;margin:5px;border:none;border-radius:8px;font-weight:bold;cursor:pointer}.green{background:#00ff88}.red{background:#ff4444;color:#fff}.plan{background:#222;padding:12px;border-radius:10px;margin:10px 0;border:1px solid #00ff88}input{width:100%;padding:10px;margin:8px 0;border-radius:8px;border:none;box-sizing:border-box}#depositBox,#investBox{display:none;background:#222;padding:15px;border-radius:10px;margin-top:15px}img{max-width:100%;border-radius:8px;margin-top:10px}</style></head><body><div class="card"><h1 id="welcome">Welcome</h1><p>Balance: <b>UGX <span id="bal">0</span></b></p><button class="green" onclick="showDeposit()">Deposit</button><button class="green" onclick="showInvest()">Invest</button><button class="red" onclick="logout()">Logout</button><div id="depositBox"><h3>Deposit via Airtel Money</h3><p>Send to: <b style="color:#00ff88;font-size:18px">0740383797 - Summaya</b></p><p style="color:#ffcc00;font-size:13px">1. Send Money to 0740383797<br>2. Take Screenshot of confirmation<br>3. Upload screenshot below</p><input id="depAmount" type="number" placeholder="Amount e.g 20000"><p style="margin:5px 0">Upload Payment Screenshot:</p><input id="screenshotFile" type="file" accept="image/*" onchange="previewImage()"><img id="preview" style="display:none"><button class="green" onclick="doDeposit()">Submit Deposit with Screenshot</button><p id="depMsg"></p></div><div id="investBox"><h3>Investment Plans</h3><div class="plan"><b>Starter - 10% daily x10 days</b><br>Min 20k<br><button class="green" onclick="doInvest('Starter',20000)">Invest 20k</button></div><div class="plan"><b>Pro - 15% daily x15 days</b><br>Min 50k<br><button class="green" onclick="doInvest('Pro',50000)">Invest 50k</button></div><div class="plan"><b>VIP - 20% daily x20 days</b><br>Min 100k<br><button class="green" onclick="doInvest('VIP',100000)">Invest 100k</button></div><p id="invMsg"></p></div></div><script>
-const u=JSON.parse(localStorage.getItem('user')||'{}');if(!u.phone)location.href='/';welcome.innerText='Welcome '+u.fullName;bal.innerText=u.balance||'0.00';
-function logout(){localStorage.clear();location.href='/';}
-function showDeposit(){depositBox.style.display='block';investBox.style.display='none';}
-function showInvest(){investBox.style.display='block';depositBox.style.display='none';}
-let base64Screenshot='';
-function previewImage(){const file=screenshotFile.files[0];if(!file)return;const reader=new FileReader();reader.onload=(e)=>{base64Screenshot=e.target.result;preview.src=base64Screenshot;preview.style.display='block';};reader.readAsDataURL(file);}
-async function doDeposit(){const amount=depAmount.value;if(!amount)return alert('Enter amount');if(!base64Screenshot)return alert('Please upload screenshot!');depMsg.innerText='Uploading...';const r=await fetch('/api/deposit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:u.id,amount,screenshot:base64Screenshot})});const d=await r.json();depMsg.innerText=d.message;alert(d.message);}
-async function doInvest(plan,amount){const r=await fetch('/api/invest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:u.id,plan,amount})});const d=await r.json();invMsg.innerText=d.message;alert(d.message);}
-</script></body></html>`); });
+app.get('/dashboard', (req,res)=>{ res.send(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#0a0a0a;color:#fff;font-family:sans-serif;padding:20px;margin:0}.card{background:#1a1a1a;padding:20px;border-radius:15px;max-width:420px;margin:auto}h1{color:#00ff88}button{padding:12px 18px;margin:5px;border:none;border-radius:8px;font-weight:bold;cursor:pointer}.green{background:#00ff88}.red{background:#ff4444;color:#fff}.plan{background:#222;padding:12px;border-radius:10px;margin:10px 0;border:1px solid #00ff88}input{width:100%;padding:10px;margin:8px 0;border-radius:8px;border:none}#depositBox,#investBox{display:none;background:#222;padding:15px;border-radius:10px;margin-top:15px}img{max-width:100%;border-radius:8px;margin-top:10px}</style></head><body><div class="card"><h1 id="welcome">Welcome</h1><p>Balance: <b>UGX <span id="bal">0</span></b></p><button class="green" onclick="showDeposit()">Deposit</button><button class="green" onclick="showInvest()">Invest</button><button class="red" onclick="logout()">Logout</button><div id="depositBox"><h3>Deposit via Airtel Money</h3><p>Send to: <b style="color:#00ff88;font-size:18px">0740383797 - Summaya</b></p><p style="color:#ffcc00;font-size:13px">1. Send to 0740383797<br>2. Screenshot<br>3. Upload here</p><input id="depAmount" type="number" placeholder="Amount e.g 20000"><input id="screenshotFile" type="file" accept="image/*" onchange="previewImage()"><img id="preview" style="display:none"><button class="green" onclick="doDeposit()">Submit with Screenshot</button><p id="depMsg"></p></div><div id="investBox"><h3>Plans</h3><div class="plan"><b>Starter 10% x10</b> Min 20k<br><button class="green" onclick="doInvest('Starter',20000)">Invest 20k</button></div><div class="plan"><b>Pro 15% x15</b> Min 50k<br><button class="green" onclick="doInvest('Pro',50000)">Invest 50k</button></div><div class="plan"><b>VIP 20% x20</b> Min 100k<br><button class="green" onclick="doInvest('VIP',100000)">Invest 100k</button></div><p id="invMsg"></p></div></div><script>const u=JSON.parse(localStorage.getItem('user')||'{}');if(!u.phone)location.href='/';welcome.innerText='Welcome '+u.fullName;bal.innerText=u.balance||'0.00';function logout(){localStorage.clear();location.href='/';}function showDeposit(){depositBox.style.display='block';investBox.style.display='none';}function showInvest(){investBox.style.display='block';depositBox.style.display='none';}let base64Screenshot='';function previewImage(){const f=screenshotFile.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{base64Screenshot=e.target.result;preview.src=base64Screenshot;preview.style.display='block';};r.readAsDataURL(f);}async function doDeposit(){const amount=depAmount.value;if(!amount)return alert('Enter amount');if(!base64Screenshot)return alert('Upload screenshot!');depMsg.innerText='Uploading...';const res=await fetch('/api/deposit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:u.id,amount,screenshot:base64Screenshot})});const d=await res.json();depMsg.innerText=d.message;alert(d.message);}async function doInvest(p,a){const r=await fetch('/api/invest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:u.id,plan:p,amount:a})});const d=await r.json();invMsg.innerText=d.message;alert(d.message);}</script></body></html>`); });
 
-app.get('/admin', (req,res)=>{
-  res.send(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#000;color:#fff;font-family:sans-serif;padding:15px}h1{color:#00ff88}.dep{background:#1a1a1a;padding:15px;margin:10px 0;border-radius:10px;border:1px solid #333}img{max-width:100%;border-radius:8px;margin:10px 0}button{padding:8px 15px;margin:5px;border:none;border-radius:6px;font-weight:bold;cursor:pointer}.green{background:#00ff88}.red{background:#ff4444;color:#fff}</style></head><body><h1>ADMIN - Deposits for 0740383797</h1><div id="list">Loading...</div><script>async function load(){const r=await fetch('/api/admin/deposits');const data=await r.json();let html='';data.forEach(d=>{html+='<div class=dep><b>ID:'+d.id+' User:'+d.userId+' Phone:'+d.phone+' Amount: '+d.amount+' UGX Status:'+d.status+'</b><br>Time:'+d.created_at+'<br>'+(d.screenshot?'<img src='+d.screenshot+'>':'No screenshot')+'<br><button class=green onclick=approve('+d.id+')>APPROVE & Add Balance</button> <button class=red onclick=reject('+d.id+')>REJECT</button></div>'});list.innerHTML=html||'No deposits';}async function approve(id){if(!confirm('Approve this? Money confirmed on 0740383797?'))return;const r=await fetch('/api/admin/approve/'+id,{method:'POST'});const d=await r.json();alert(d.message);load();}async function reject(id){const r=await fetch('/api/admin/reject/'+id,{method:'POST'});const d=await r.json();alert(d.message);load();}load();</script></body></html>`);
-});
+app.get('/admin', (req,res)=>{ res.send(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#000;color:#fff;font-family:sans-serif;padding:15px}h1{color:#00ff88}.dep{background:#1a1a1a;padding:15px;margin:10px 0;border-radius:10px}img{max-width:100%;border-radius:8px;margin:10px 0}button{padding:8px 15px;margin:5px;border:none;border-radius:6px;font-weight:bold}.green{background:#00ff88}.red{background:#ff4444;color:#fff}</style></head><body><h1>ADMIN - 0740383797</h1><div id="list">Loading...</div><script>async function load(){const r=await fetch('/api/admin/deposits');const data=await r.json();let h='';data.forEach(d=>{h+='<div class=dep><b>UserID:'+d.userId+' Phone:'+d.phone+' Amount:'+d.amount+' Status:'+d.status+'</b><br>'+d.created_at+'<br>'+(d.screenshot?'<img src='+d.screenshot+'>':'No img')+'<br><button class=green onclick=approve('+d.id+')>APPROVE</button> <button class=red onclick=reject('+d.id+')>REJECT</button></div>'});list.innerHTML=h||'No deposits yet - make test deposit!';}async function approve(id){if(!confirm('Approve? Money received on 0740383797?'))return;const r=await fetch('/api/admin/approve/'+id,{method:'POST'});const d=await r.json();alert(d.message);load();}async function reject(id){const r=await fetch('/api/admin/reject/'+id,{method:'POST'});const d=await r.json();alert(d.message);load();}load();</script></body></html>`); });
 
-app.post('/api/register', async (req,res)=>{
-  const {fullName, phone, password}=req.body;
-  if(!fullName||!phone||!password) return res.status(400).json({message:'All fields'});
-  const hashed=await bcrypt.hash(password,10);
-  pool.query('INSERT INTO users (fullName, phone, password) VALUES (?,?,?)',[fullName,phone,hashed],(err)=>{
-    if(err){ if(err.code==='ER_DUP_ENTRY') return res.status(400).json({message:'Phone already registered'}); return res.status(500).json({message:err.sqlMessage}); }
-    res.json({message:'Account created! Now login'});
-  });
-});
-app.post('/api/login', (req,res)=>{
-  const {phone,password}=req.body;
-  pool.query('SELECT * FROM users WHERE phone=?',[phone], async (err,results)=>{
-    if(err) return res.status(500).json({message:'DB error '+err.message});
-    if(results.length===0) return res.status(400).json({message:'Phone not found'});
-    const user=results[0]; const match=await bcrypt.compare(password,user.password);
-    if(!match) return res.status(400).json({message:'Wrong password'});
-    res.json({message:'Welcome '+user.fullName, user:{id:user.id, fullName:user.fullName, phone:user.phone, balance:user.balance}});
-  });
-});
-app.post('/api/deposit', (req,res)=>{
-  initDB();
-  const {userId, amount, screenshot}=req.body;
-  if(!screenshot) return res.status(400).json({message:'Screenshot required'});
-  pool.query('INSERT INTO deposits (userId, amount, screenshot, status) VALUES (?,?,?,?)',[userId, amount, screenshot, 'pending'], (err)=>{
-    if(err) return res.status(500).json({message:'Deposit failed: '+err.sqlMessage});
-    res.json({message:'Deposit submitted! Screenshot received. Admin will check 0740383797 and approve in 5 mins!'});
-  });
-});
-app.post('/api/invest', (req,res)=>{
-  initDB();
-  const {userId, plan, amount}=req.body;
-  pool.query('INSERT INTO investments (userId, plan, amount, profit, status) VALUES (?,?,?,?,?)',[userId, plan, amount, amount*0.1, 'active'], (err)=>{
-    if(err) return res.status(500).json({message:'Invest failed: '+err.sqlMessage});
-    res.json({message:'Invested '+amount+' in '+plan+'!'});
-  });
-});
-app.get('/api/admin/deposits', (req,res)=>{
-  pool.query('SELECT deposits.*, users.phone FROM deposits LEFT JOIN users ON deposits.userId=users.id ORDER BY deposits.id DESC', (err,results)=>{
-    if(err) return res.status(500).json({message:err.message});
-    res.json(results);
-  });
-});
-app.post('/api/admin/approve/:id', (req,res)=>{
-  const id=req.params.id;
-  pool.query('SELECT * FROM deposits WHERE id=?',[id], (err,results)=>{
-    if(err||results.length===0) return res.status(400).json({message:'Not found'});
-    const dep=results[0];
-    pool.query('UPDATE users SET balance = balance +? WHERE id=?',[dep.amount, dep.userId], (e)=>{
-      if(e) return res.status(500).json({message:e.message});
-      pool.query('UPDATE deposits SET status=? WHERE id=?',['approved', id], ()=>{
-        res.json({message:'Approved! Balance added to user.'});
-      });
-    });
-  });
-});
-app.post('/api/admin/reject/:id', (req,res)=>{
-  pool.query('UPDATE deposits SET status=? WHERE id=?',['rejected', req.params.id], (err)=>{
-    res.json({message:'Rejected'});
-  });
-});
-const PORT=process.env.PORT||3000;
-app.listen(PORT,()=>console.log('Running '+PORT));
+app.post('/api/register', async (req,res)=>{const {fullName,phone,password}=req.body;const hashed=await bcrypt.hash(password,10);pool.query('INSERT INTO users (fullName,phone,password) VALUES (?,?,?)',[fullName,phone,hashed],(err)=>{if(err){if(err.code==='ER_DUP_ENTRY')return res.status(400).json({message:'Phone registered'});return res.status(500).json({message:err.sqlMessage});}res.json({message:'Created! Login now'});});});
+app.post('/api/login', (req,res)=>{pool.query('SELECT * FROM users WHERE phone=?',[req.body.phone], async (err,results)=>{if(err||results.length==0)return res.status(400).json({message:'Not found'});const match=await bcrypt.compare(req.body.password,results[0].password);if(!match)return res.status(400).json({message:'Wrong password'});const u=results[0];res.json({message:'Welcome',user:{id:u.id,fullName:u.fullName,phone:u.phone,balance:u.balance}});});});
+app.post('/api/deposit', (req,res)=>{const {userId,amount,screenshot}=req.body;if(!screenshot)return res.status(400).json({message:'Screenshot required'});pool.query('INSERT INTO deposits (userId,amount,screenshot,status) VALUES (?,?,?,?)',[userId,amount,screenshot,'pending'],(err)=>{if(err)return res.status(500).json({message:'Failed: '+err.sqlMessage});res.json({message:'Deposit with screenshot submitted! Admin will approve after checking 0740383797'});});});
+app.post('/api/invest', (req,res)=>{pool.query('INSERT INTO investments (userId,plan,amount,profit,status) VALUES (?,?,?,?,?)',[req.body.userId,req.body.plan,req.body.amount,req.body.amount*0.1,'active'],(err)=>{if(err)return res.status(500).json({message:err.sqlMessage});res.json({message:'Invested!'});});});
+app.get('/api/admin/deposits', (req,res)=>{pool.query('SELECT deposits.*, users.phone FROM deposits LEFT JOIN users ON deposits.userId=users.id ORDER BY id DESC',(err,results)=>{if(err)return res.status(500).json([]);res.json(results);});});
+app.post('/api/admin/approve/:id', (req,res)=>{pool.query('SELECT * FROM deposits WHERE id=?',[req.params.id],(err,rows)=>{if(err||!rows.length)return res.status(400).json({message:'Not found'});const dep=rows[0];pool.query('UPDATE users SET balance=balance+? WHERE id=?',[dep.amount,dep.userId],()=>{pool.query('UPDATE deposits SET status=? WHERE id=?',['approved',req.params.id],()=>{res.json({message:'Approved! Balance added'});});});});});
+app.post('/api/admin/reject/:id', (req,res)=>{pool.query('UPDATE deposits SET status=? WHERE id=?',['rejected',req.params.id],()=>{res.json({message:'Rejected'});});});
+app.listen(process.env.PORT||3000,()=>console.log('Running'));
