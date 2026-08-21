@@ -1,1 +1,33 @@
-
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{background:#000;color:#fff;font-family:sans-serif;padding:10px}.card{background:#1a1a1a;padding:12px;margin:8px 0;border-radius:10px}button{padding:8px 10px;margin:3px;border:none;border-radius:6px;font-weight:bold}.g{background:#0f8}.r{background:#f44;color:#fff}.o{background:#fa0}img{max-width:200px;border-radius:8px;margin-top:6px}</style>
+</head><body><h1 style="color:#0f8">ADMIN PANEL</h1>
+<button class="g" onclick="load('deposits')">Deposits</button><button class="o" onclick="load('withdraws')">Withdraws</button><button class="g" onclick="load('users')">Users</button>
+<div id="list">Loading...</div>
+<script>
+async function load(type){
+ let url='/api/admin/'+type; let r=await fetch(url); let data=await r.json();
+ let h='<h2>'+type+' ('+data.length+')</h2>';
+ if(type=='deposits'){
+  data.forEach(function(d){
+   let c=d.status=='approved'?'#0f8':d.status=='rejected'?'#f44':'#fa0';
+   h+='<div class=card><b>User:'+d.userId+' Phone:'+d.phone+' Amount:'+d.amount+' RefBy:'+(d.referredBy||'None')+'</b><br>Status: <b style=color:'+c+'>'+d.status+'</b><br>'+d.created_at+'<br>'+(d.screenshot?'<img src='+d.screenshot+'>':'')+'<br><button class=g onclick=approve('+d.id+')>APPROVE +10%</button> <button class=r onclick=reject('+d.id+')>REJECT</button></div>';
+  });
+ }
+ if(type=='withdraws'){
+  data.forEach(function(d){
+   h+='<div class=card><b>User:'+d.userId+' Amount:'+d.amount+' Phone:'+d.phone+'</b><br>'+d.status+' | '+d.created_at+'<br><button class=o onclick=approveW('+d.id+')>MARK SENT</button> <button class=r onclick=rejectW('+d.id+')>REJECT & RETURN</button></div>';
+  });
+ }
+ if(type=='users'){
+  data.forEach(function(u){
+   h+='<div class=card>'+u.fullName+' | '+u.phone+'<br>Code: <b style=color:#0f8>'+(u.referralCode||'OLD')+'</b> | RefBy:'+(u.referredBy||'None')+'<br>Bal:'+u.balance+' | Bonus:'+(u.totalReferralBonus||0)+'</div>';
+  });
+ }
+ document.getElementById('list').innerHTML=h;
+}
+async function approve(id){let r=await fetch('/api/admin/approve/'+id,{method:'POST'});let d=await r.json();alert(d.message);load('deposits');}
+async function reject(id){let r=await fetch('/api/admin/reject/'+id,{method:'POST'});let d=await r.json();alert(d.message);load('deposits');}
+async function approveW(id){let r=await fetch('/api/admin/withdraw/approve/'+id,{method:'POST'});let d=await r.json();alert(d.message);load('withdraws');}
+async function rejectW(id){let r=await fetch('/api/admin/withdraw/reject/'+id,{method:'POST'});let d=await r.json();alert(d.message);load('withdraws');}
+load('deposits');
+</script></body></html>
