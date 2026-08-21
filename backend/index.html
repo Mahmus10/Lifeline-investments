@@ -1,1 +1,20 @@
-
+<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}.box{background:#1a1a1a;padding:20px;border-radius:12px;width:90%;max-width:350px}h1{color:#0f8;text-align:center}input{width:100%;padding:10px;margin:6px 0;border-radius:6px;border:none}button{width:100%;padding:10px;background:#0f8;border:none;border-radius:6px;font-weight:bold;margin-top:6px}</style>
+</head><body><div class="box"><h1>LIFELINE</h1><p style="text-align:center;color:#fa0">5% Daily +10% Referral</p>
+<input id="n" placeholder="Full Name"><input id="ph" placeholder="Phone"><input id="pw" type="password" placeholder="Password"><input id="rc" placeholder="Referral Code">
+<button onclick="reg()">Register</button><p id="m"></p><hr>
+<input id="lph" placeholder="Phone"><input id="lpw" type="password" placeholder="Password"><button onclick="log()">Login</button><p id="m2"></p>
+</div><script>
+let rc=document.getElementById('rc');
+let u=new URLSearchParams(location.search).get('ref');
+if(u) rc.value=u;
+async function reg(){
+ let r=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fullName:document.getElementById('n').value,phone:document.getElementById('ph').value,password:document.getElementById('pw').value,referralCode:rc.value})});
+ let d=await r.json(); document.getElementById('m').innerText=d.message;
+}
+async function log(){
+ let r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:document.getElementById('lph').value,password:document.getElementById('lpw').value})});
+ let d=await r.json(); document.getElementById('m2').innerText=d.message;
+ if(r.ok){localStorage.setItem('user',JSON.stringify(d.user));location.href='/dashboard';}
+}
+</script></body></html>
