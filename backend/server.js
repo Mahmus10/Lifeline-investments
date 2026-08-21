@@ -1,96 +1,10 @@
-const express=require('express');
-const mysql=require('mysql2/promise');
-const cors=require('cors');
-const app=express();
-app.use(cors()); app.use(express.json());
-
-let db;
-(async()=>{
-  try{
-    const u=process.env.DATABASE_URL||process.env.MYSQL_URL;
-    db=await mysql.createConnection(u);
-    console.log("DB OK");
-
-    // Create tables if not exist
-    await db.query(`CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100), phone VARCHAR(20) UNIQUE, password VARCHAR(100), balance DECIMAL(12,2) DEFAULT 0, bonus DECIMAL(12,2) DEFAULT 0, myReferralCode VARCHAR(20), referredBy VARCHAR(20))`);
-    await db.query(`CREATE TABLE IF NOT EXISTS deposits (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, phone VARCHAR(20), amount DECIMAL(12,2), airtelNo VARCHAR(20), status VARCHAR(20) DEFAULT 'pending', createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
-    await db.query(`CREATE TABLE IF NOT EXISTS investments (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, amount DECIMAL(12,2), profit DECIMAL(12,2) DEFAULT 0, status VARCHAR(20) DEFAULT 'active', createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
-
-    // FIX OLD TABLE - Add missing columns
-    try{await db.query("ALTER TABLE users ADD COLUMN name VARCHAR(100)")}catch(e){}
-    try{await db.query("ALTER TABLE users ADD COLUMN myReferralCode VARCHAR(20)")}catch(e){}
-    try{await db.query("ALTER TABLE users ADD COLUMN referredBy VARCHAR(20)")}catch(e){}
-    try{await db.query("ALTER TABLE users ADD COLUMN bonus DECIMAL(12,2) DEFAULT 0")}catch(e){}
-    try{await db.query("ALTER TABLE users ADD COLUMN balance DECIMAL(12,2) DEFAULT 0")}catch(e){}
-    try{await db.query("ALTER TABLE deposits ADD COLUMN airtelNo VARCHAR(20)")}catch(e){}
-
-  }catch(e){console.log(e.message)}
-})();
-
-app.post('/api/register',async(req,res)=>{
-  try{
-    const{name,phone,password,ref}=req.body;
-    const code='LIFE'+Math.random().toString(36).substring(2,6).toUpperCase();
-    await db.query("INSERT INTO users (name,phone,password,myReferralCode,referredBy,balance,bonus) VALUES (?,?,?,?,?,0,0)",[name,phone,password,code,ref||null]);
-    if(ref){try{await db.query("UPDATE users SET bonus=bonus+1000 WHERE myReferralCode=?",[ref])}catch(e){}}
-    const [u]=await db.query("SELECT * FROM users WHERE phone=?",[phone]);
-    res.json(u[0])
-  }catch(e){console.log("Register error:",e.message);res.status(400).json({error:e.message})}
-});
-
-app.post('/api/login',async(req,res)=>{
-  try{
-    const[r]=await db.query("SELECT * FROM users WHERE phone=? AND password=?",[req.body.phone,req.body.password]);
-    if(r.length)res.json(r[0]);else res.status(401).json({error:"Wrong phone or password"})
-  }catch(e){res.status(400).json({error:e.message})}
-});
-
-app.post('/api/deposit',async(req,res)=>{
-  try{
-    const{userId,amount,airtelNo}=req.body;
-    const[u]=await db.query("SELECT * FROM users WHERE id=?",[userId]);
-    await db.query("INSERT INTO deposits (userId,phone,amount,airtelNo) VALUES (?,?,?,?)",[userId,u[0].phone,amount,airtelNo]);
-    res.json({success:true})
-  }catch(e){res.status(400).json({error:e.message})}
-});
-
-app.post('/api/invest',async(req,res)=>{
-  try{
-    const[u]=await db.query("SELECT * FROM users WHERE id=?",[req.body.userId]);
-    if(u[0].balance<req.body.amount)return res.status(400).json({error:"Low balance"});
-    await db.query("UPDATE users SET balance=balance-? WHERE id=?",[req.body.amount,req.body.userId]);
-    await db.query("INSERT INTO investments (userId,amount) VALUES (?,?)",[req.body.userId,req.body.amount]);
-    res.json({success:true})
-  }catch(e){res.status(400).json({error:e.message})}
-});
-
-app.get('/api/user/:id',async(req,res)=>{
-  try{
-    const[u]=await db.query("SELECT * FROM users WHERE id=?",[req.params.id]);
-    res.json(u[0]||{})
-  }catch(e){res.json({})}
-});
-
-app.get('/api/admin/deposits',async(req,res)=>{
-  try{
-    const[r]=await db.query("SELECT * FROM deposits WHERE status='pending' ORDER BY id DESC");
-    res.json(r)
-  }catch(e){res.json([])}
-});
-
-app.post('/api/admin/approve/:id',async(req,res)=>{
-  try{
-    const[d]=await db.query("SELECT * FROM deposits WHERE id=?",[req.params.id]);
-    if(!d[0])return res.json({error:"not found"});
-    await db.query("UPDATE deposits SET status='approved' WHERE id=?",[req.params.id]);
-    await db.query("UPDATE users SET balance=balance+? WHERE id=?",[d[0].amount,d[0].userId]);
-    res.json({success:true})
-  }catch(e){res.status(400).json({error:e.message})}
-});
-
-app.get('/admin',(req,res)=>{
-  res.send(`<!DOCTYPE html><html><body style="background:#000;color:#fff;padding:20px;font-family:Arial"><h2>🔐 ADMIN - PENDING</h2><div id="list">Loading...</div><script>async function load(){let r=await fetch('/api/admin/deposits');let d=await r.json();let e=document.getElementById('list');if(!d.length)e.innerHTML='<h3>No pending ✅</h3>';else e.innerHTML=d.map(x=>\`<div id="row-\${x.id}" style="background:#222;padding:12px;margin:10px 0;border-radius:10px;transition:0.5s">\${x.phone} - \${x.amount} UGX <button onclick="approve(\${x.id})" style="background:lime;padding:6px 15px;margin-left:10px;border:none;border-radius:5px">Approve</button></div>\`).join('')}async function approve(id){await fetch('/api/admin/approve/'+id,{method:'POST'});let row=document.getElementById('row-'+id);row.style.opacity='0';row.style.transform='translateX(100%)';setTimeout(()=>row.remove(),500);}load();<\/script></body></html>`)
-});
-
-app.get('/',(req,res)=>{
-  res.send(`<!DOCTYPE html><html><head><meta name="viewport"
+const express=require('express');const mysql=require('mysql2/promise');const cors=require('cors');const app=express();app.use(cors());app.use(express.json());let db;async function init(){try{const u=process.env.DATABASE_URL||process.env.MYSQL_URL;db=await mysql.createConnection(u);await db.query(`CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100), phone VARCHAR(20) UNIQUE, password VARCHAR(100), balance DECIMAL(12,2) DEFAULT 0, bonus DECIMAL(12,2) DEFAULT 0, myReferralCode VARCHAR(20), referredBy VARCHAR(20))`);await db.query(`CREATE TABLE IF NOT EXISTS deposits (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, phone VARCHAR(20), amount DECIMAL(12,2), airtelNo VARCHAR(20), status VARCHAR(20) DEFAULT 'pending', createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);try{await db.query("ALTER TABLE users ADD COLUMN name VARCHAR(100)")}catch(e){}try{await db.query("ALTER TABLE users ADD COLUMN bonus DECIMAL(12,2) DEFAULT 0")}catch(e){}try{await db.query("ALTER TABLE users ADD COLUMN myReferralCode VARCHAR(20)")}catch(e){}try{await db.query("ALTER TABLE users ADD COLUMN referredBy VARCHAR(20)")}catch(e){}console.log("DB OK")}catch(e){console.log(e.message)}}init();
+app.post('/api/register',async(req,res)=>{try{const{name,phone,password,ref}=req.body;const code='LIFE'+Math.random().toString(36).slice(2,6).toUpperCase();await db.query("INSERT INTO users (name,phone,password,myReferralCode,referredBy,balance,bonus) VALUES (?,?,?,?,?,0,0)",[name,phone,password,code,ref||null]);const[r]=await db.query("SELECT * FROM users WHERE phone=?",[phone]);res.json(r[0])}catch(e){res.status(400).json({error:e.message})}});
+app.post('/api/login',async(req,res)=>{const[r]=await db.query("SELECT * FROM users WHERE phone=? AND password=?",[req.body.phone,req.body.password]);r.length?res.json(r[0]):res.status(401).json({error:"Wrong"})});
+app.post('/api/deposit',async(req,res)=>{const{userId,amount,airtelNo}=req.body;const[u]=await db.query("SELECT * FROM users WHERE id=?",[userId]);await db.query("INSERT INTO deposits (userId,phone,amount,airtelNo) VALUES (?,?,?,?)",[userId,u[0].phone,amount,airtelNo]);res.json({ok:1})});
+app.get('/api/user/:id',async(req,res)=>{const[u]=await db.query("SELECT * FROM users WHERE id=?",[req.params.id]);res.json(u[0]||{})});
+app.get('/api/admin/deposits',async(req,res)=>{const[r]=await db.query("SELECT * FROM deposits WHERE status='pending' ORDER BY id DESC");res.json(r)});
+app.post('/api/admin/approve/:id',async(req,res)=>{const[d]=await db.query("SELECT * FROM deposits WHERE id=?",[req.params.id]);await db.query("UPDATE deposits SET status='approved' WHERE id=?",[req.params.id]);await db.query("UPDATE users SET balance=balance+? WHERE id=?",[d[0].amount,d[0].userId]);res.json({ok:1})});
+app.get('/admin',(req,res)=>{res.send('<body style="background:#000;color:#fff;padding:20px;font-family:Arial"><h2>ADMIN</h2><div id="l">Loading...</div><script>async function ld(){let r=await fetch("/api/admin/deposits");let d=await r.json();let e=document.getElementById("l");if(!d.length)e.innerHTML="No pending";else e.innerHTML=d.map(x=>`<div id="r-${x.id}" style="background:#222;padding:12px;margin:10px 0;transition:.5s">${x.phone} - ${x.amount} <button onclick="ap(${x.id})" style="background:lime;padding:5px 10px;margin-left:10px">Approve</button></div>`).join("")}async function ap(id){await fetch("/api/admin/approve/"+id,{method:"POST"});let el=document.getElementById("r-"+id);el.style.opacity=0;el.style.transform="translateX(100%)";setTimeout(()=>el.remove(),500)}ld()</script>')});
+app.get('/',(req,res)=>{res.send('<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#000;color:#fff;font-family:Arial;padding:20px}input,button{width:100%;padding:12px;margin:6px 0;border-radius:8px;border:none}button{background:gold;font-weight:bold}</style></head><body><h2>Lifeline Investments</h2><input id="n" placeholder="Name"><input id="p" placeholder="Phone"><input id="pw" type="password" placeholder="Password"><input id="rf" placeholder="Referral (optional)"><button onclick="reg()">Register</button><button onclick="log()" style="background:#333;color:#fff">Login</button><div id="d" style="display:none"><h3>Balance: <span id="b">0</span></h3><input id="am" placeholder="Deposit amount"><input id="air" placeholder="Airtel No"><button onclick="dep()">Deposit</button><p><a href="/admin" style="color:gold">Admin</a></p></div><script>let uid=localStorage.getItem("uid");if(uid)sd();async function reg(){let r=await fetch("/api/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:n.value,phone:p.value,password:pw.value,ref:rf.value})});let j=await r.json();if(j.id){localStorage.setItem("uid",j.id);uid=j.id;sd()}else alert(j.error)}async function log(){let r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:p.value,password:pw.value})});let j=await r.json();if(j.id){localStorage.setItem("uid",j.id);uid=j.id;sd()}else alert("Wrong")}async function sd(){d.style.display="block";let r=await fetch("/api/user/"+uid);let u=await r.json();b.textContent=u.balance||0}async function dep(){await fetch("/api/deposit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:uid,amount:am.value,airtelNo:air.value})});alert("Deposit sent!")}</script></body></html>')});
+app.listen(process.env.PORT||3000,()=>console.log("UP"));
