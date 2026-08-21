@@ -1,1 +1,27 @@
-
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{background:#0a0a0a;color:#fff;font-family:sans-serif;padding:10px}.card{background:#1a1a1a;padding:15px;border-radius:12px;max-width:450px;margin:auto}button{padding:8px;margin:3px;border:none;border-radius:6px;font-weight:bold}.g{background:#0f8}.o{background:#fa0}.b{background:#0af;color:#fff}.r{background:#f44;color:#fff}.p{background:#a0f;color:#fff}.inv{border:1px solid #0f8;padding:10px;margin:8px 0;border-radius:8px}input{width:100%;padding:8px;margin:5px 0;border-radius:6px;border:none}</style>
+</head><body><div class="card"><h2 id="w">Welcome</h2><p>Bal: <b id="bal">0</b> | Bonus: <b id="bon">0</b></p>
+<p>Link: <input id="lnk" readonly style="font-size:10px"><button class="b" onclick="copy()">Copy Referral</button></p>
+<button class="g" onclick="show('dB')">Deposit</button><button class="g" onclick="show('iB')">Invest</button><button class="o" onclick="show('wB')">Withdraw</button><button class="b" onclick="loadInv()">Profit</button><button class="p" onclick="loadHis()">History</button><button class="r" onclick="localStorage.clear();location.href='/'">Logout</button>
+<div id="dB" style="display:none"><h3>Deposit 0740383797</h3><input id="am" type="number" placeholder="Amount"><input type="file" accept="image/*" id="fileIn"><img id="pr" style="display:none;max-width:100%"><button class="g" onclick="dep()">Submit</button></div>
+<div id="iB" style="display:none"><h3>Plans 5% x30</h3><button class="g" onclick="inv('Starter',20000)">Starter 20k</button><button class="g" onclick="inv('Pro',50000)">Pro 50k</button><button class="g" onclick="inv('VIP',100000)">VIP 100k</button></div>
+<div id="wB" style="display:none"><input id="wA" placeholder="Amount"><input id="wP" placeholder="Airtel No"><button class="o" onclick="withd()">Request</button></div>
+<div id="my"></div><div id="hB" style="display:none"><h3>History</h3><div id="hL"></div></div>
+</div><script>
+let u=JSON.parse(localStorage.getItem('user')||'{}');
+if(!u.phone) location.href='/';
+document.getElementById('w').innerText='Hi '+u.fullName;
+document.getElementById('bal').innerText=u.balance;
+document.getElementById('bon').innerText=u.totalReferralBonus||0;
+document.getElementById('lnk').value=location.origin+'/?ref='+(u.referralCode||'');
+let sc='';
+document.getElementById('fileIn').addEventListener('change',function(){let r=new FileReader();r.onload=function(e){sc=e.target.result;let pr=document.getElementById('pr');pr.src=sc;pr.style.display='block';};r.readAsDataURL(this.files[0]);});
+function show(id){document.getElementById('dB').style.display='none';document.getElementById('iB').style.display='none';document.getElementById('wB').style.display='none';document.getElementById(id).style.display='block';}
+function copy(){let l=document.getElementById('lnk');l.select();document.execCommand('copy');alert('Copied');}
+async function inv(p,a){let r=await fetch('/api/invest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:u.id,plan:p,amount:a})});let d=await r.json();alert(d.message);loadInv();}
+async function dep(){let am=document.getElementById('am').value; if(!sc){alert('Select screenshot');return;} let r=await fetch('/api/deposit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:u.id,amount:am,screenshot:sc})});let d=await r.json();alert(d.message);}
+async function withd(){let r=await fetch('/api/withdraw',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:u.id,amount:document.getElementById('wA').value,phone:document.getElementById('wP').value})});let d=await r.json();alert(d.message);}
+async function loadInv(){let r=await fetch('/api/my-investments/'+u.id);let d=await r.json();let h='';let tot=0;d.forEach(function(x){tot+=x.avail;h+='<div class=inv>'+x.plan+' '+x.amount+' Day '+x.days+'/'+x.max+' Avail '+x.avail.toFixed(0)+(x.avail>0?' <button class=g onclick=cl('+x.id+')>CLAIM</button>':'')+'</div>';});document.getElementById('my').innerHTML='<b>Total: '+tot.toFixed(0)+'</b>'+h;}
+async function cl(id){let r=await fetch('/api/claim/'+id,{method:'POST'});let d=await r.json();alert(d.message);location.reload();}
+async function loadHis(){document.getElementById('hB').style.display='block';let r=await fetch('/api/history/'+u.id);let d=await r.json();let h='';d.forEach(function(t){h+='<div style=background:#222;padding:8px;margin:4px;border-radius:6px>'+t.type+' '+t.amount+' '+t.status+'<br><small>'+new Date(t.created_at).toLocaleString()+'</small></div>';});document.getElementById('hL').innerHTML=h||'No history';}
+</script></body></html>
