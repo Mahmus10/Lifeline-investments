@@ -1,41 +1,18 @@
-const express = require('express');
-const mysql = require('mysql2/promise');
-const cors = require('cors');
-const path = require('path');
-const app = express();
-app.use(cors());
-app.use(express.json());
+const express=require('express');
+const mysql=require('mysql2/promise');
+const cors=require('cors');
+const app=express();
+app.use(cors()); app.use(express.json());
+let db;(async()=>{try{const u=process.env.DATABASE_URL||process.env.MYSQL_URL;db=await mysql.createConnection(u);console.log("DB OK");await db.query(`CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100), phone VARCHAR(20) UNIQUE, password VARCHAR(100), balance DECIMAL(12,2) DEFAULT 0, bonus DECIMAL(12,2) DEFAULT 0, myReferralCode VARCHAR(20), referredBy VARCHAR(20))`);await db.query(`CREATE TABLE IF NOT EXISTS deposits (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, phone VARCHAR(20), amount DECIMAL(12,2), airtelNo VARCHAR(20), status VARCHAR(20) DEFAULT 'pending', createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);await db.query(`CREATE TABLE IF NOT EXISTS investments (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, amount DECIMAL(12,2), profit DECIMAL(12,2) DEFAULT 0, status VARCHAR(20) DEFAULT 'active', createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`)}catch(e){console.log(e.message)}})();
 
-let db;
-(async()=>{
-  try{
-    const url=process.env.DATABASE_URL||process.env.MYSQL_URL;
-    db=await mysql.createConnection(url);
-    console.log("DB OK");
-    await db.query(`CREATE TABLE IF NOT EXISTS deposits (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, phone VARCHAR(20), amount DECIMAL(12,2), airtelNo VARCHAR(20), status VARCHAR(20) DEFAULT 'pending', createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
-    await db.query(`CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100), phone VARCHAR(20) UNIQUE, password VARCHAR(100), balance DECIMAL(12,2) DEFAULT 0, bonus DECIMAL(12,2) DEFAULT 0, myReferralCode VARCHAR(20), referredBy VARCHAR(20))`);
-  }catch(e){console.log(e.message)}
-})();
+app.post('/api/register',async(req,res)=>{try{const{name,phone,password,ref}=req.body;const code='LIFE'+Math.random().toString(36).substring(2,6).toUpperCase();await db.query("INSERT INTO users (name,phone,password,myReferralCode,referredBy) VALUES (?,?,?,?,?)",[name,phone,password,code,ref||null]);if(ref)await db.query("UPDATE users SET bonus=bonus+1000 WHERE myReferralCode=?",[ref]);const [u]=await db.query("SELECT * FROM users WHERE phone=?",[phone]);res.json(u[0])}catch(e){res.status(400).json({error:e.message})}});
+app.post('/api/login',async(req,res)=>{const[r]=await db.query("SELECT * FROM users WHERE phone=? AND password=?",[req.body.phone,req.body.password]);if(r.length)res.json(r[0]);else res.status(401).json({error:"Wrong"})});
+app.post('/api/deposit',async(req,res)=>{const{userId,amount,airtelNo}=req.body;const[u]=await db.query("SELECT * FROM users WHERE id=?",[userId]);await db.query("INSERT INTO deposits (userId,phone,amount,airtelNo) VALUES (?,?,?,?)",[userId,u[0].phone,amount,airtelNo]);res.json({success:true})});
+app.post('/api/invest',async(req,res)=>{const[u]=await db.query("SELECT * FROM users WHERE id=?",[req.body.userId]);if(u[0].balance<req.body.amount)return res.status(400).json({error:"Low balance"});await db.query("UPDATE users SET balance=balance-? WHERE id=?",[req.body.amount,req.body.userId]);await db.query("INSERT INTO investments (userId,amount) VALUES (?,?)",[req.body.userId,req.body.amount]);res.json({success:true})});
+app.get('/api/user/:id',async(req,res)=>{const[u]=await db.query("SELECT * FROM users WHERE id=?",[req.params.id]);res.json(u[0]||{})});
+app.get('/api/admin/deposits',async(req,res)=>{const[r]=await db.query("SELECT * FROM deposits WHERE status='pending' ORDER BY id DESC");res.json(r)});
+app.post('/api/admin/approve/:id',async(req,res)=>{const[d]=await db.query("SELECT * FROM deposits WHERE id=?",[req.params.id]);await db.query("UPDATE deposits SET status='approved' WHERE id=?",[req.params.id]);await db.query("UPDATE users SET balance=balance+? WHERE id=?",[d[0].amount,d[0].userId]);res.json({success:true})});
 
-// ADMIN API
-app.get('/api/admin/deposits', async(req,res)=>{
-  try{
-    const [rows]=await db.query("SELECT * FROM deposits WHERE status='pending' ORDER BY id DESC");
-    res.json(rows);
-  }catch(e){res.json([])}
-});
-app.post('/api/admin/approve/:id', async(req,res)=>{
-  const [dep]=await db.query("SELECT * FROM deposits WHERE id=?",[req.params.id]);
-  if(!dep[0]) return res.json({error:"not found"});
-  await db.query("UPDATE deposits SET status='approved' WHERE id=?",[req.params.id]);
-  await db.query("UPDATE users SET balance=balance+? WHERE id=?",[dep[0].amount, dep[0].userId]);
-  res.json({success:true});
-});
-
-// THIS IS YOUR FADE ADMIN - WORKS ALWAYS
-app.get('/admin', (req,res)=>{
-  res.send(`<!DOCTYPE html><html><body style="background:black;color:white;padding:20px;font-family:sans-serif"><h2>🔐 ADMIN - PENDING DEPOSITS</h2><div id="list">Loading...</div><script>async function load(){let r=await fetch('/api/admin/deposits');let data=await r.json();let el=document.getElementById('list');if(!data.length) el.innerHTML='<h3>No pending ✅</h3>';else el.innerHTML=data.map(d=>\`<div id="row-\${d.id}" style="background:#222;padding:12px;margin:10px 0;border-radius:10px;transition:0.5s">\${d.phone} - \${d.amount} UGX - \${d.airtelNo||''} <button onclick="approve(\${d.id})" style="background:#00ff00;color:black;padding:6px 15px;border:none;border-radius:5px;margin-left:10px">Approve</button></div>\`).join('')}async function approve(id){await fetch('/api/admin/approve/'+id,{method:'POST'});let row=document.getElementById('row-'+id);row.style.opacity='0';row.style.transform='translateX(100%)';setTimeout(()=>row.remove(),500);}load();<\/script></body></html>`);
-});
-
-app.get('/', (req,res)=>{res.redirect('/admin')});
-app.listen(process.env.PORT||3000, ()=>console.log("Running"));
+app.get('/admin',(req,res)=>{res.send(`<!DOCTYPE html><html><body style="background:#000;color:#fff;padding:20px;font-family:Arial"><h2>🔐 ADMIN - PENDING</h2><div id="list">Loading...</div><script>async function load(){let r=await fetch('/api/admin/deposits');let d=await r.json();let e=document.getElementById('list');if(!d.length)e.innerHTML='<h3>No pending ✅</h3>';else e.innerHTML=d.map(x=>\`<div id="row-\${x.id}" style="background:#222;padding:12px;margin:10px 0;border-radius:10px;transition:0.5s">\${x.phone} - \${x.amount} UGX <button onclick="approve(\${x.id})" style="background:lime;padding:6px 15px;margin-left:10px;border:none;border-radius:5px">Approve</button></div>\`).join('')}async function approve(id){await fetch('/api/admin/approve/'+id,{method:'POST'});let row=document.getElementById('row-'+id);row.style.opacity='0';row.style.transform='translateX(100%)';setTimeout(()=>row.remove(),500);}load();<\/script></body></html>`)});
+app.get('/',(req,res)=>{res.send(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#000;color:#fff;font-family:Arial;padding:20px}input,button{width:100%;padding:12px;margin:8px 0;border-radius:8px;border:none}button{background:gold;font-weight:bold}</style></head><body><h2>💰 Lifeline Investments</h2><div id="app"><input id="name" placeholder="Name"><input id="phone" placeholder="Phone 07..."><input id="pass" type="password" placeholder="Password"><input id="ref" placeholder="Referral code (optional)"><button onclick="reg()">Register</button><button onclick="log()" style="background:#333;color:#fff">Login</button><div id="dash" style="display:none"><h3>Balance: <span id="bal">0</span> UGX</h3><input id="amt" placeholder="Deposit amount"><input id="air" placeholder="Your Airtel No"><button onclick="dep()">Deposit</button><hr><input id="invAmt" placeholder="Invest amount"><button onclick="inv()">Invest</button><p><a href="/admin" style="color:gold">Go to Admin</a></p></div></div><script>let uid=localStorage.getItem('uid');if(uid)showDash();async function reg(){let r=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.value,phone:phone.value,password:pass.value,ref:ref.value})});let d=await r.json();if(d.id){localStorage.setItem('uid',d.id);uid=d.id;showDash()}else alert(d.error)}async function log(){let r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:phone.value,password:pass.value})});let d=await r.json();if(d.id){localStorage.setItem('uid',d.id);uid=d.id;showDash()}else alert('Wrong')}async function showDash(){document.getElementById('dash').style.display='block';let r=await fetch('/api/user/'+uid);let u=await r.json();bal.textContent=u.balance||0}async function dep(){await fetch('/api/deposit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid,amount:amt.value,airtelNo:air.value})});alert('Deposit submitted! Wait for admin approval')}async function inv(){await fetch('/api/invest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid,amount:invAmt.value})});alert('Invested!');showDash()}<\/script></body></html>`)});
+app.listen(process.env.PORT||3000,()=>console.log("Running"));
