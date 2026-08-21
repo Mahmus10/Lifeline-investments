@@ -11,6 +11,8 @@ async function init(){
   const u=process.env.DATABASE_URL||process.env.MYSQL_URL;
   db=await mysql.createConnection(u);
   try{await db.query("ALTER TABLE users MODIFY fullName VARCHAR(100) NULL")}catch(e){}
+  try{await db.query("ALTER TABLE deposits ADD COLUMN phone VARCHAR(20)")}catch(e){}
+  try{await db.query("ALTER TABLE deposits ADD COLUMN airtelNo VARCHAR(20)")}catch(e){}
   try{await db.query("ALTER TABLE deposits ADD COLUMN screenshot LONGTEXT")}catch(e){}
   try{await db.query("ALTER TABLE deposits MODIFY screenshot LONGTEXT")}catch(e){}
   try{await db.query("ALTER TABLE users ADD COLUMN referralBonus INT DEFAULT 0")}catch(e){}
@@ -42,21 +44,21 @@ app.get('/api/user/:id',async(req,res)=>{
 app.post('/api/deposit',async(req,res)=>{
  try{
   const{userId,amount,airtelNo,screenshot}=req.body;
-  console.log("DEPOSIT",userId,amount);
   const[u]=await db.query("SELECT * FROM users WHERE id=?",[userId]);
   let phone = u.length?u[0].phone:"unknown";
   await db.query("INSERT INTO deposits (userId,phone,amount,airtelNo,screenshot,status) VALUES (?,?,?,?,?,'pending')",[userId,phone,parseInt(amount),airtelNo,screenshot||""]);
   res.json({ok:1});
- }catch(e){console.log(e.message); res.status(500).json({error:e.message})}
+ }catch(e){res.status(500).json({error:e.message})}
 });
 app.post('/api/invest',async(req,res)=>{
  try{
   const{userId,club,amount}=req.body;
-  const clubs={arsenal:{rate:10,lock:10},manutd:{rate:10,lock:10},mancity:{rate:10,lock:10},chelsea:{rate:8,lock:8},liverpool:{rate:8,lock:8}};
   const[u]=await db.query("SELECT * FROM users WHERE id=?",[userId]);
   if((u[0].balance||0) < amount) return res.status(400).json({error:"Insufficient"});
+  const clubs={arsenal:10,manutd:10,mancity:10,chelsea:8,liverpool:8};
+  const locks={arsenal:10,manutd:10,mancity:10,chelsea:8,liverpool:8};
   await db.query("UPDATE users SET balance=balance-? WHERE id=?",[amount,userId]);
-  await db.query("INSERT INTO investments (userId,club,amount,rate,lockDays) VALUES (?,?,?,?,?)",[userId,club,amount,clubs[club].rate,clubs[club].lock]);
+  await db.query("INSERT INTO investments (userId,club,amount,rate,lockDays) VALUES (?,?,?,?,?)",[userId,club,amount,clubs[club],locks[club]]);
   res.json({ok:1});
  }catch(e){res.status(400).json({error:e.message})}
 });
@@ -77,9 +79,8 @@ app.post('/api/withdraw',async(req,res)=>{
 app.get('/api/admin/deposits',async(req,res)=>{
  if(req.query.key!==ADMIN_KEY) return res.status(401).json([]);
  try{
-  const[r]=await db.query("SELECT * FROM deposits ORDER BY id DESC LIMIT 50");
-  console.log("Deposits",r.length);
-  res.json(r.filter(x=>x.status==='pending'));
+  const[r]=await db.query("SELECT * FROM deposits WHERE status='pending' ORDER BY id DESC LIMIT 50");
+  res.json(r);
  }catch(e){res.json([])}
 });
 app.post('/api/admin/approve/:id',async(req,res)=>{
