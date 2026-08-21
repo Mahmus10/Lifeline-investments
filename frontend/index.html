@@ -1,46 +1,84 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Lifeline Investments</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: Arial; background: #0a0a0a; color: white; text-align: center; padding: 20px; }
-    .card { background: #1a1a1a; padding: 20px; border-radius: 10px; margin: 15px auto; max-width: 400px; }
-    .btn { background: #00ff88; color: black; padding: 12px 20px; border: none; border-radius: 8px; font-weight: bold; width: 90%; }
-    input { padding: 12px; width: 85%; margin: 8px; border-radius: 5px; border: none; background: #2a2a2a; color: white; }
-    .green { color: #00ff88; }
-    .red { color: #ff4444; }
-  </style>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LIFELINE INVESTMENTS</title>
+<style>
+body{ background:#0a0a0a; color:white; font-family:Arial; text-align:center; padding:20px; }
+.green{ color:#00ff88; }
+.red{ color:#ff4444; }
+.card{ background:#1a1a1a; padding:15px; border-radius:10px; margin:15px 0; text-align:left; }
+input{ width:90%; padding:12px; margin:8px 0; border-radius:5px; border:none; }
+.btn{ background:#00ff88; color:black; padding:12px 20px; border:none; border-radius:5px; font-weight:bold; width:95%; margin-top:10px; cursor:pointer; }
+</style>
 </head>
 <body>
-  <h1 class="green">LIFELINE INVESTMENTS</h1>
-  <p>Earn 5% Daily Income</p>
-  
-  <div class="card">
-    <h3>Platform Rules</h3>
-    <p>Min Deposit: <b>20,000 UGX</b></p>
-    <p>Min Withdraw: <b>5,000 UGX</b></p>
-    <p>Interest Withdraw: <b>3,000 UGX+</b> Daily</p>
-    <p>Deposit Lock: <b>8 Days</b></p>
-    <p>Referral: <b>4%</b></p>
-    <p class="red">Deposit To: <b>0740383797</b></p>
-    <p>Telegram: <b>0740383797</b></p>
-  </div>
 
-  <div class="card">
-    <h3>Create Account</h3>
-    <input type="text" id="name" placeholder="Full Name"><br>
-    <input type="text" id="phone" placeholder="Phone Number"><br>
-    <input type="password" id="password" placeholder="Password"><br>
-    <input type="text" id="referral" placeholder="Referral Code - Optional"><br>
-    <button class="btn" onclick="register()">Register Now</button>
-  </div>
+<h1 class="green">LIFELINE INVESTMENTS</h1>
+<p>Earn 5% Daily Income</p>
 
-  <script>
-    const API = "https://your-backend-url.railway.app"
-    function register(){
-      alert("Connecting to backend after deployment...")
+<div class="card">
+<h3>Platform Rules</h3>
+<p>Min Deposit: <b>20,000 UGX</b></p>
+<p>Min Withdraw: <b>5,000 UGX</b></p>
+<p>Interest Withdraw: <b>3,000 UGX+</b> Daily</p>
+<p>Deposit Lock: <b>8 Days</b></p>
+<p>Referral: <b>4%</b></p>
+<p class="red">Deposit To: <b>0740383797</b></p>
+<p>Telegram: <b>0740383797</b></p>
+</div>
+
+<div class="card">
+<h3>Create Account</h3>
+<input type="text" id="name" placeholder="Full Name">
+<input type="text" id="phone" placeholder="Phone Number">
+<input type="password" id="password" placeholder="Password">
+<input type="text" id="referral" placeholder="Referral Code (optional)">
+<button class="btn" onclick="register()">Register Now</button>
+<p id="msg" class="green"></p>
+</div>
+
+<script>
+const API = "https://lifeline-investments-production.up.railway.app/api"
+
+async function register(){
+  const name = document.getElementById('name').value.trim()
+  const phone = document.getElementById('phone').value.trim()
+  const password = document.getElementById('password').value.trim()
+  const referral = document.getElementById('referral').value.trim()
+
+  if(!name || !phone || !password){ 
+    alert("Please fill Name, Phone and Password"); 
+    return; 
+  }
+
+  document.getElementById('msg').innerText = "Creating account..."
+
+  try{
+    const res = await fetch(API + "/auth/register", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({name, phone, password, referralCode: referral})
+    })
+    
+    const data = await res.json()
+    
+    if(res.ok){
+      document.getElementById('msg').innerText = "Success! Account created for " + phone
+      alert("Account Created Successfully! Phone: " + phone)
+      document.getElementById('name').value=""
+      document.getElementById('phone').value=""
+      document.getElementById('password').value=""
+    } else {
+      document.getElementById('msg').innerText = ""
+      alert(data.message || data.error || "Failed to create account")
     }
-  </script>
+  }catch(e){
+    document.getElementById('msg').innerText = ""
+    alert("Network error - Backend may be sleeping, try again in 10 sec: " + e.message)
+  }
+}
+</script>
+
 </body>
 </html>
