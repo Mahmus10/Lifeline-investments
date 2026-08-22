@@ -15,74 +15,36 @@ async function init(){
   await db.query("CREATE TABLE IF NOT EXISTS deposits (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, phone VARCHAR(30), amount INT, airtelNo VARCHAR(30), screenshot LONGTEXT, status VARCHAR(20) DEFAULT 'pending', createdAt DATETIME DEFAULT CURRENT_TIMESTAMP)");
   await db.query("CREATE TABLE IF NOT EXISTS investments (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, club VARCHAR(50), amount INT, rate INT, lockDays INT, startDate DATETIME DEFAULT CURRENT_TIMESTAMP, status VARCHAR(20) DEFAULT 'active')");
   await db.query("CREATE TABLE IF NOT EXISTS withdrawals (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, amount INT, type VARCHAR(20), status VARCHAR(20) DEFAULT 'pending', createdAt DATETIME DEFAULT CURRENT_TIMESTAMP)");
-  try{await db.query("ALTER TABLE users ADD COLUMN referralBonus INT DEFAULT 0")}catch(e){}
-  try{await db.query("UPDATE investments SET rate=10, lockDays=10 WHERE club IN ('arsenal','manutd','mancity') AND (rate IS NULL OR rate=0)")}catch(e){}
-  try{await db.query("UPDATE investments SET rate=8, lockDays=8 WHERE club IN ('chelsea','liverpool') AND (rate IS NULL OR rate=0)")}catch(e){}
-  console.log("DB OK CLEAN");
+  console.log("DB OK");
  }catch(e){console.log(e.message)}
 }
 init();
 
-app.post('/api/register',async(req,res)=>{
- try{
-  const code='LIFE'+Math.random().toString(36).slice(2,6).toUpperCase();
-  await db.query("INSERT INTO users (fullName,phone,password,myReferralCode,referredBy,balance,referralBonus) VALUES (?,?,?,?,?,0,0)",[req.body.name,req.body.phone,req.body.password,code,req.body.ref||null]);
-  const[r]=await db.query("SELECT * FROM users WHERE phone=?",[req.body.phone]); res.json(r[0]);
- }catch(e){res.status(400).json({error:e.message})}
+app.post('/api/register',async(req,res)=>{ try{ const code='LIFE'+Math.random().toString(36).slice(2,6).toUpperCase(); await db.query("INSERT INTO users (fullName,phone,password,myReferralCode,referredBy,balance,referralBonus) VALUES (?,?,?,?,?,0,0)",[req.body.name,req.body.phone,req.body.password,code,req.body.ref||null]); const[r]=await db.query("SELECT * FROM users WHERE phone=?",[req.body.phone]); res.json(r[0]); }catch(e){res.status(400).json({error:e.message})} });
+app.post('/api/login',async(req,res)=>{ const[r]=await db.query("SELECT * FROM users WHERE phone=? AND password=?",[req.body.phone,req.body.password]); if(r.length) res.json(r[0]); else res.status(401).json({error:"Wrong"}); });
+app.get('/api/user/:id',async(req,res)=>{ const[u]=await db.query("SELECT * FROM users WHERE id=?",[req.params.id]); const[inv]=await db.query("SELECT * FROM investments WHERE userId=? AND status='active'",[req.params.id]); let total=0; let now=new Date(); const rm={arsenal:10,manutd:10,mancity:10,chelsea:8,liverpool:8}; for(let i of inv){let d=Math.floor((now-new Date(i.startDate))/(1000*60*60*24)); if(d<0)d=0; total+=Math.floor((i.amount||0)*(i.rate||rm[i.club]||10)/100*d);} const[w]=await db.query("SELECT COALESCE(SUM(amount),0) as s FROM withdrawals WHERE userId=? AND status IN ('pending','approved')",[req.params.id]); let avail=total-w[0].s; if(avail<0)avail=0; res.json({...u[0], totalInterest:avail, investments:inv}); });
+app.get('/api/team/:id',async(req,res)=>{ const[u]=await db.query("SELECT * FROM users WHERE id=?",[req.params.id]); if(!u.length) return res.json({team:[]}); const[team]=await db.query("SELECT phone,fullName,balance FROM users WHERE referredBy=?",[u[0].myReferralCode]); res.json({code:u[0].myReferralCode, bonus:u[0].referralBonus||0, count:team.length, team:team}); });
+app.post('/api/deposit',async(req,res)=>{ const[u]=await db.query("SELECT phone FROM users WHERE id=?",[req.body.userId]); await db.query("INSERT INTO deposits (userId,phone,amount,airtelNo,screenshot) VALUES (?,?,?,?,?)",[req.body.userId, u[0]?u[0].phone:"", parseInt(req.body.amount), req.body.airtelNo, req.body.screenshot||""]); res.json({ok:1}); });
+app.post('/api/invest',async(req,res)=>{ const{userId,club,amount}=req.body; if(amount<2000) return res.status(400).json({error:"Min 2000"}); const[u]=await db.query("SELECT balance FROM users WHERE id=?",[userId]); if(u[0].balance<amount) return res.status(400).json({error:"Insufficient"}); const rates={arsenal:10,manutd:10,mancity:10,chelsea:8,liverpool:8}; const locks={arsenal:10,manutd:10,mancity:10,chelsea:8,liverpool:8}; await db.query("UPDATE users SET balance=balance-? WHERE id=?",[amount,userId]); await db.query("INSERT INTO investments (userId,club,amount,rate,lockDays) VALUES (?,?,?,?,?)",[userId,club,amount,rates[club],locks[club]]); res.json({ok:1}); });
+app.post('/api/withdraw',async(req,res)=>{ const[inv]=await db.query("SELECT * FROM investments WHERE userId=? AND status='active'",[req.body.userId]); let total=0; let now=new Date(); const rm={arsenal:10,manutd:10,mancity:10,chelsea:8,liverpool:8}; for(let i of inv){let d=Math.floor((now-new Date(i.startDate))/(1000*60*60*24)); total+=Math.floor((i.amount||0)*(i.rate||rm[i.club]||10)/100*d);} const[w]=await db.query("SELECT COALESCE(SUM(amount),0) as s FROM withdrawals WHERE userId=? AND status IN ('pending','approved')",[req.body.userId]); let avail=total-w[0].s; if(req.body.amount>avail) return res.status(400).json({error:"Only "+avail+" available"}); if(req.body.amount<5000) return res.status(400).json({error:"Min 5000"}); await db.query("INSERT INTO withdrawals (userId,amount,type) VALUES (?,?,'interest')",[req.body.userId,req.body.amount]); res.json({ok:1}); });
+
+// ADMIN APIS FOR PASSWORD RESET
+app.get('/api/admin/users',async(req,res)=>{
+ if(req.query.key!==ADMIN_KEY) return res.status(401).json([]);
+ let q=req.query.search||"";
+ let sql="SELECT id,phone,fullName,password,balance,myReferralCode,referredBy FROM users ORDER BY id DESC LIMIT 100";
+ let params=[];
+ if(q){ sql="SELECT id,phone,fullName,password,balance,myReferralCode,referredBy FROM users WHERE phone LIKE? OR fullName LIKE? ORDER BY id DESC LIMIT 100"; params=["%"+q+"%","%"+q+"%"]; }
+ const[r]=await db.query(sql,params); res.json(r);
 });
-app.post('/api/login',async(req,res)=>{const[r]=await db.query("SELECT * FROM users WHERE phone=? AND password=?",[req.body.phone,req.body.password]); if(r.length) res.json(r[0]); else res.status(401).json({error:"Wrong"});});
-app.get('/api/user/:id',async(req,res)=>{
- const[u]=await db.query("SELECT * FROM users WHERE id=?",[req.params.id]);
- const[inv]=await db.query("SELECT * FROM investments WHERE userId=? AND status='active'",[req.params.id]);
- let total=0; let now=new Date(); const rm={arsenal:10,manutd:10,mancity:10,chelsea:8,liverpool:8};
- for(let i of inv){let d=Math.floor((now-new Date(i.startDate))/(1000*60*60*24)); if(d<0)d=0; let r=i.rate||rm[i.club]||10; total+=Math.floor((i.amount||0)*r/100*d);}
- const[w]=await db.query("SELECT COALESCE(SUM(amount),0) as s FROM withdrawals WHERE userId=? AND status IN ('pending','approved')",[req.params.id]);
- let avail=total-w[0].s; if(avail<0)avail=0;
- res.json({...u[0], totalInterest:avail, investments:inv});
-});
-app.get('/api/team/:id',async(req,res)=>{
- const[u]=await db.query("SELECT * FROM users WHERE id=?",[req.params.id]);
- if(!u.length) return res.json({team:[]});
- const[team]=await db.query("SELECT phone,fullName,balance FROM users WHERE referredBy=?",[u[0].myReferralCode]);
- res.json({code:u[0].myReferralCode, bonus:u[0].referralBonus||0, count:team.length, team:team});
-});
-app.post('/api/deposit',async(req,res)=>{
- const[u]=await db.query("SELECT phone FROM users WHERE id=?",[req.body.userId]);
- await db.query("INSERT INTO deposits (userId,phone,amount,airtelNo,screenshot) VALUES (?,?,?,?,?)",[req.body.userId, u[0]?u[0].phone:"", parseInt(req.body.amount), req.body.airtelNo, req.body.screenshot||""]);
- res.json({ok:1});
-});
-app.post('/api/invest',async(req,res)=>{
- const{userId,club,amount}=req.body;
- if(amount<2000) return res.status(400).json({error:"Min 2000"});
- const[u]=await db.query("SELECT balance FROM users WHERE id=?",[userId]);
- if(u[0].balance<amount) return res.status(400).json({error:"Insufficient balance"});
- const rates={arsenal:10,manutd:10,mancity:10,chelsea:8,liverpool:8};
- const locks={arsenal:10,manutd:10,mancity:10,chelsea:8,liverpool:8};
- await db.query("UPDATE users SET balance=balance-? WHERE id=?",[amount,userId]);
- await db.query("INSERT INTO investments (userId,club,amount,rate,lockDays) VALUES (?,?,?,?,?)",[userId,club,amount,rates[club],locks[club]]);
- res.json({ok:1});
-});
-app.post('/api/withdraw',async(req,res)=>{
- const[inv]=await db.query("SELECT * FROM investments WHERE userId=? AND status='active'",[req.body.userId]);
- let total=0; let now=new Date(); const rm={arsenal:10,manutd:10,mancity:10,chelsea:8,liverpool:8};
- for(let i of inv){let d=Math.floor((now-new Date(i.startDate))/(1000*60*60*24)); total+=Math.floor((i.amount||0)*(i.rate||rm[i.club]||10)/100*d);}
- const[w]=await db.query("SELECT COALESCE(SUM(amount),0) as s FROM withdrawals WHERE userId=? AND status IN ('pending','approved')",[req.body.userId]);
- let avail=total-w[0].s;
- if(req.body.amount>avail) return res.status(400).json({error:"Only "+avail+" available"});
- if(req.body.amount<5000) return res.status(400).json({error:"Min 5000"});
- await db.query("INSERT INTO withdrawals (userId,amount,type) VALUES (?,?,'interest')",[req.body.userId,req.body.amount]);
- res.json({ok:1});
-});
-app.get('/api/admin/deposits',async(req,res)=>{ if(req.query.key!==ADMIN_KEY) return res.status(401).json([]); const[r]=await db.query("SELECT * FROM deposits WHERE status='pending' ORDER BY id DESC"); res.json(r); });
-app.post('/api/admin/approve/:id',async(req,res)=>{
+app.post('/api/admin/resetpass/:id',async(req,res)=>{
  if(req.query.key!==ADMIN_KEY) return res.status(401).json({});
- const[d]=await db.query("SELECT * FROM deposits WHERE id=?",[req.params.id]);
- await db.query("UPDATE deposits SET status='approved' WHERE id=?",[req.params.id]);
- await db.query("UPDATE users SET balance=balance+? WHERE id=?",[d[0].amount,d[0].userId]);
- const[u]=await db.query("SELECT * FROM users WHERE id=?",[d[0].userId]);
- if(u[0].referredBy){ const[ref]=await db.query("SELECT * FROM users WHERE myReferralCode=?",[u[0].referredBy]); if(ref.length){let b=Math.floor(d[0].amount*0.1); await db.query("UPDATE users SET balance=balance+?, referralBonus=referralBonus+? WHERE id=?",[b,b,ref[0].id]);} }
+ await db.query("UPDATE users SET password=? WHERE id=?",[req.body.newPass, req.params.id]);
  res.json({ok:1});
 });
+
+app.get('/api/admin/deposits',async(req,res)=>{ if(req.query.key!==ADMIN_KEY) return res.status(401).json([]); const[r]=await db.query("SELECT * FROM deposits WHERE status='pending' ORDER BY id DESC"); res.json(r); });
+app.post('/api/admin/approve/:id',async(req,res)=>{ if(req.query.key!==ADMIN_KEY) return res.status(401).json({}); const[d]=await db.query("SELECT * FROM deposits WHERE id=?",[req.params.id]); await db.query("UPDATE deposits SET status='approved' WHERE id=?",[req.params.id]); await db.query("UPDATE users SET balance=balance+? WHERE id=?",[d[0].amount,d[0].userId]); const[u]=await db.query("SELECT * FROM users WHERE id=?",[d[0].userId]); if(u[0].referredBy){ const[ref]=await db.query("SELECT * FROM users WHERE myReferralCode=?",[u[0].referredBy]); if(ref.length){let b=Math.floor(d[0].amount*0.1); await db.query("UPDATE users SET balance=balance+?, referralBonus=referralBonus+? WHERE id=?",[b,b,ref[0].id]);} } res.json({ok:1}); });
 app.get('/api/admin/withdraws',async(req,res)=>{ if(req.query.key!==ADMIN_KEY) return res.status(401).json([]); const[r]=await db.query("SELECT w.*, u.phone FROM withdrawals w JOIN users u ON w.userId=u.id WHERE w.status='pending'"); res.json(r); });
 app.post('/api/admin/withdraw/:id',async(req,res)=>{ if(req.query.key!==ADMIN_KEY) return res.status(401).json({}); if(req.body.action==='approve') await db.query("UPDATE withdrawals SET status='approved' WHERE id=?",[req.params.id]); else await db.query("UPDATE withdrawals SET status='rejected' WHERE id=?",[req.params.id]); res.json({ok:1}); });
 
@@ -93,11 +55,18 @@ deposit: '<html><head><meta name="viewport" content="width=device-width,initial-
 invest: '<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#000;color:#fff;padding:15px;font-family:Arial}.club{background:#111;padding:15px;border-radius:12px;margin:10px 0}button{width:100%;padding:12px;border-radius:8px;border:none;background:gold;font-weight:bold}input{width:100%;padding:12px;border-radius:8px;border:none}a{color:gold}</style></head><body><a href="/dashboard">Back</a><h2>Invest Min 2000</h2><p>Bal: <span id="bal">0</span></p><div class="club"><h3>Arsenal 10%/10d</h3><input id="a-arsenal" placeholder="2000"><button onclick="inv(\'arsenal\')">Invest</button></div><div class="club"><h3>Man Utd 10%/10d</h3><input id="a-manutd"><button onclick="inv(\'manutd\')">Invest</button></div><div class="club"><h3>Man City 10%/10d</h3><input id="a-mancity"><button onclick="inv(\'mancity\')">Invest</button></div><div class="club"><h3>Chelsea 8%/8d</h3><input id="a-chelsea"><button onclick="inv(\'chelsea\')">Invest</button></div><div class="club"><h3>Liverpool 8%/8d</h3><input id="a-liverpool"><button onclick="inv(\'liverpool\')">Invest</button></div><button style="background:#0088cc;color:#fff" onclick="window.open(\'TG_LINK_PLACE\')">Telegram Care</button><script>let uid=localStorage.getItem("uid");async function load(){let r=await fetch("/api/user/"+uid);let u=await r.json();bal.textContent=u.balance}async function inv(c){let v=document.getElementById("a-"+c).value;if(parseInt(v)<2000)return alert("Min 2000");let r=await fetch("/api/invest",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:uid,club:c,amount:parseInt(v)})});let j=await r.json();if(j.ok){alert("Invested!");location.href="/myinvest"}else alert(j.error)}load()</script></body></html>',
 myinvest: '<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#000;color:#fff;padding:15px;font-family:Arial}.card{background:#111;padding:12px;margin:10px 0;border-radius:10px}a{color:gold}</style></head><body><a href="/dashboard">Back</a><h2>My Invest</h2><div id="l"></div><button style="background:#0088cc;color:#fff;padding:12px;width:100%;border-radius:8px;border:none" onclick="window.open(\'TG_LINK_PLACE\')">Telegram Customer Care</button><script>let uid=localStorage.getItem("uid");const rates={arsenal:10,manutd:10,mancity:10,chelsea:8,liverpool:8};async function load(){let r=await fetch("/api/user/"+uid);let u=await r.json();let h="";let now=new Date();for(let i of (u.investments||[])){let d=Math.floor((now-new Date(i.startDate))/(1000*60*60*24));if(d<0)d=0;let rate=i.rate||rates[i.club]||10;let lock=i.lockDays||(rate>=10?10:8);let p=Math.floor((i.amount||0)*rate/100*d);h+="<div class=card><b>"+i.club.toUpperCase()+"</b> "+i.amount+" UGX<br>Profit: "+p+" UGX<br>Days: "+d+"/"+lock+" Rate: "+rate+"%</div>"}l.innerHTML=h||"None"}load()</script></body></html>',
 referral: '<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#000;color:#fff;padding:15px;font-family:Arial}a{color:gold}.card{background:#111;padding:15px;border-radius:12px;margin:10px 0;text-align:center}button{width:100%;padding:12px;border-radius:8px;border:none;background:gold;font-weight:bold;margin:5px 0}input{width:100%;padding:12px;border-radius:8px;border:none;background:#222;color:#fff;text-align:center}</style></head><body><a href="/dashboard">Back</a><h2>My Referral Team</h2><div class="card"><h3 style="color:gold">Code: <span id="code">---</span></h3><p>Bonus: <span id="bonus" style="color:#0f0">0</span></p><p>Team: <span id="count">0</span></p><input id="link" readonly><button onclick="copy()">Copy Link</button><button onclick="share()" style="background:#25D366">Share WhatsApp</button><button style="background:#0088cc;color:#fff" onclick="window.open(\'TG_LINK_PLACE\')">Join Telegram Care Group</button></div><div id="team"></div><script>let uid=localStorage.getItem("uid");async function load(){let r=await fetch("/api/team/"+uid);let j=await r.json();code.textContent=j.code;bonus.textContent=(j.bonus||0)+" UGX";count.textContent=j.count;let url=location.origin+"/?ref="+j.code;link.value=url;let html="";if(j.team.length==0)html="<p>No team yet</p>";else for(let t of j.team){html+="<div class=card style=text-align:left><b>"+(t.fullName||t.phone)+"</b><br>"+t.phone+"<br>"+(t.balance||0)+" UGX</div>"}team.innerHTML=html}function copy(){link.select();document.execCommand("copy");alert("Copied!")}function share(){let m="Join Lifeline! Code "+code.textContent+" Link: "+link.value; window.open("https://wa.me/?text="+encodeURIComponent(m))}load()</script></body></html>',
-admin: '<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#000;color:#fff;padding:15px;font-family:Arial}input,button{width:100%;padding:10px;margin:5px 0;border-radius:8px;border:none}button{background:gold;font-weight:bold}.tab{padding:10px;background:#222;display:inline-block;margin:5px;border-radius:5px;cursor:pointer}.active{background:gold;color:#000}</style></head><body><div id="loginBox"><h2>Admin</h2><input id="pass" type="password"><button onclick="check()">Unlock</button></div><div id="adminBox" style="display:none"><h2>ADMIN</h2><div><span class="tab active" id="t1" onclick="showTab(\'dep\')">Deposits</span><span class="tab" id="t2" onclick="showTab(\'with\')">Withdraws</span></div><div id="depBox"><div id="l">Loading</div></div><div id="withBox" style="display:none"><div id="lw">Loading</div></div></div><script>const AP="LIFELINE123";let en="";function check(){if(pass.value===AP){en=pass.value;loginBox.style.display="none";adminBox.style.display="block";ld()}}function showTab(t){if(t==="dep"){depBox.style.display="block";withBox.style.display="none";t1.classList.add("active");t2.classList.remove("active");ld()}else{depBox.style.display="none";withBox.style.display="block";t2.classList.add("active");t1.classList.remove("active");lw()}}async function ld(){let r=await fetch("/api/admin/deposits?key="+en);let d=await r.json();let e=document.getElementById("l");if(!d.length)e.innerHTML="No pending";else{let h="";for(let x of d){h+="<div id=r-"+x.id+" style=background:#222;padding:12px;margin:10px 0;border-radius:10px><b>"+x.phone+"</b> "+x.amount+" UGX<br>"+x.airtelNo+"<br>"+(x.screenshot?"<img src="+x.screenshot+" style=width:100%>":"")+"<br><button onclick=ap("+x.id+")>Approve</button></div>"}e.innerHTML=h}}async function ap(id){await fetch("/api/admin/approve/"+id+"?key="+en,{method:"POST"});document.getElementById("r-"+id).remove()}async function lw(){let r=await fetch("/api/admin/withdraws?key="+en);let d=await r.json();let e=document.getElementById("lw");if(!d.length)e.innerHTML="No pending";else{let h="";for(let x of d){h+="<div id=w-"+x.id+" style=background:#222;padding:12px;margin:10px 0;border-radius:10px><b>"+x.phone+"</b> wants "+x.amount+"<br><button onclick=aw("+x.id+",\'approve\')>Approve</button><button onclick=aw("+x.id+",\'reject\')>Reject</button></div>"}e.innerHTML=h}}async function aw(id,act){await fetch("/api/admin/withdraw/"+id+"?key="+en,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:act})});document.getElementById("w-"+id).remove()}</script></body></html>'
+admin: `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#000;color:#fff;padding:15px;font-family:Arial}input,button{width:100%;padding:10px;margin:5px 0;border-radius:8px;border:none}button{background:gold;font-weight:bold}.tab{padding:10px;background:#222;display:inline-block;margin:5px;border-radius:5px;cursor:pointer}.active{background:gold;color:#000}.usercard{background:#222;padding:10px;margin:8px 0;border-radius:8px}</style></head><body><div id="loginBox"><h2>Admin</h2><input id="pass" type="password" placeholder="LIFELINE123"><button onclick="check()">Unlock</button></div><div id="adminBox" style="display:none"><h2>ADMIN - LIFELINE</h2><div><span class="tab active" id="t1" onclick="showTab('dep')">Deposits</span><span class="tab" id="t2" onclick="showTab('with')">Withdraws</span><span class="tab" id="t3" onclick="showTab('users')">Users/Pass Reset</span></div><div id="depBox"><div id="l">Loading</div></div><div id="withBox" style="display:none"><div id="lw">Loading</div></div><div id="usersBox" style="display:none"><input id="search" placeholder="Search phone or name"><button onclick="loadUsers()">Search Users</button><div id="lu">Type phone and search</div></div></div><script>
+const AP="LIFELINE123";let en="";function check(){if(pass.value===AP){en=pass.value;loginBox.style.display="none";adminBox.style.display="block";ld()}}function showTab(t){depBox.style.display=t==='dep'?'block':'none';withBox.style.display=t==='with'?'block':'none';usersBox.style.display=t==='users'?'block':'none';document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));if(t==='dep'){t1.classList.add('active');ld()}if(t==='with'){t2.classList.add('active');lw()}if(t==='users'){t3.classList.add('active');loadUsers()}}
+async function ld(){let r=await fetch("/api/admin/deposits?key="+en);let d=await r.json();let e=document.getElementById("l");if(!d.length)e.innerHTML="No pending";else{let h="";for(let x of d){h+="<div id=r-"+x.id+" style=background:#222;padding:12px;margin:10px 0;border-radius:10px><b>"+x.phone+"</b> "+x.amount+" UGX<br>"+x.airtelNo+"<br>"+(x.screenshot?"<img src="+x.screenshot+" style=width:100%>":"")+"<br><button onclick=ap("+x.id+")>Approve</button></div>"}e.innerHTML=h}}
+async function ap(id){await fetch("/api/admin/approve/"+id+"?key="+en,{method:"POST"});document.getElementById("r-"+id).remove()}
+async function lw(){let r=await fetch("/api/admin/withdraws?key="+en);let d=await r.json();let e=document.getElementById("lw");if(!d.length)e.innerHTML="No pending";else{let h="";for(let x of d){h+="<div id=w-"+x.id+" style=background:#222;padding:12px;margin:10px 0;border-radius:10px><b>"+x.phone+"</b> wants "+x.amount+"<br><button onclick=aw("+x.id+",'approve')>Approve</button><button onclick=aw("+x.id+",'reject')>Reject</button></div>"}e.innerHTML=h}}
+async function aw(id,act){await fetch("/api/admin/withdraw/"+id+"?key="+en,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:act})});document.getElementById("w-"+id).remove()}
+async function loadUsers(){let q=document.getElementById('search').value;let r=await fetch("/api/admin/users?key="+en+"&search="+encodeURIComponent(q));let d=await r.json();let e=document.getElementById('lu');if(!d.length)e.innerHTML="No users";else{let h="";for(let u of d){h+="<div class=usercard><b>"+(u.fullName||'')+"</b><br>Phone: "+u.phone+"<br>Pass: <span style=color:gold>"+u.password+"</span><br>Balance: "+u.balance+"<br>Code: "+u.myReferralCode+"<br><input id=newpass-"+u.id+" placeholder=New Password><button onclick=resetPass("+u.id+")>Reset Password to this</button></div>"}e.innerHTML=h}}
+async function resetPass(id){let np=document.getElementById('newpass-'+id).value;if(!np)return alert('Enter new pass');let r=await fetch("/api/admin/resetpass/"+id+"?key="+en,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({newPass:np})});let j=await r.json();if(j.ok)alert('Password reset to: '+np); loadUsers();}
+</script></body></html>`
 };
 
 function render(name,res){ let html=pages[name].replace(/TG_LINK_PLACE/g, TG_LINK); res.send(html); }
-
 app.get('/',(req,res)=>render('home',res));
 app.get('/dashboard',(req,res)=>render('dash',res));
 app.get('/deposit',(req,res)=>render('deposit',res));
@@ -105,5 +74,4 @@ app.get('/invest',(req,res)=>render('invest',res));
 app.get('/myinvest',(req,res)=>render('myinvest',res));
 app.get('/referral',(req,res)=>render('referral',res));
 app.get('/admin',(req,res)=>render('admin',res));
-
-app.listen(process.env.PORT||3000,()=>console.log("UP CLEAN"));
+app.listen(process.env.PORT||3000,()=>console.log("UP WITH PASS RESET"));
