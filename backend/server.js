@@ -15,31 +15,20 @@ async function init(){
   await db.query("CREATE TABLE IF NOT EXISTS deposits (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, phone VARCHAR(30), amount INT, airtelNo VARCHAR(30), screenshot LONGTEXT, status VARCHAR(20) DEFAULT 'pending', createdAt DATETIME DEFAULT CURRENT_TIMESTAMP)");
   await db.query("CREATE TABLE IF NOT EXISTS investments (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, club VARCHAR(50), amount INT, rate INT, lockDays INT, startDate DATETIME DEFAULT CURRENT_TIMESTAMP, status VARCHAR(20) DEFAULT 'active')");
   await db.query("CREATE TABLE IF NOT EXISTS withdrawals (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, amount INT, type VARCHAR(20), status VARCHAR(20) DEFAULT 'pending', createdAt DATETIME DEFAULT CURRENT_TIMESTAMP)");
-  console.log("DB OK FINAL WITH REJECT");
+  console.log("DB OK WITH ADMIN NOTIFY");
  }catch(e){console.log(e.message)}
 }
 init();
 
 app.get('/icon.svg',(req,res)=>{
  res.set('Content-Type','image/svg+xml');
- res.send(`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" rx="120" fill="#000"/><circle cx="256" cy="256" r="190" fill="none" stroke="#FFD700" stroke-width="2"/><path d="M150 130 L150 380 Q150 400 170 400 L330 400 Q345 400 335 410 Q315 430 295 430 L170 430 Q130 430 130 390 L130 130 Q130 112 150 130Z" fill="#FFD700"/><path d="M165 375 C 250 355, 310 300, 380 170" fill="none" stroke="#FFD700" stroke-width="8" stroke-linecap="round"/><circle cx="180" cy="370" r="3" fill="#FFD700"/><circle cx="210" cy="360" r="4" fill="#FFD700"/><circle cx="250" cy="340" r="6" fill="#FFD700"/><circle cx="295" cy="305" r="8" fill="#FFD700"/><circle cx="340" cy="250" r="9" fill="#FFD700"/><polygon points="385,145 410,170 360,180" fill="#FFD700"/></svg>`);
+ res.send(`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" rx="120" fill="#000"/><circle cx="256" cy="256" r="190" fill="none" stroke="#FFD700" stroke-width="2"/><path d="M150 130 L150 380 Q150 400 170 400 L330 400 Q345 400 335 410 Q315 430 295 430 L170 430 Q130 430 130 390 L130 130 Q130 112 150 130Z" fill="#FFD700"/><path d="M165 375 C 250 355, 310 300, 380 170" fill="none" stroke="#FFD700" stroke-width="8" stroke-linecap="round"/><polygon points="385,145 410,170 360,180" fill="#FFD700"/></svg>`);
 });
 app.get('/icon.png',(req,res)=>res.redirect('/icon.svg'));
 app.get('/manifest.json',(req,res)=>{
- res.json({
-  name:"Lifeline Investments",
-  short_name:"Lifeline",
-  start_url:"/",
-  display:"standalone",
-  background_color:"#000000",
-  theme_color:"#FFD700",
-  icons:[{src:"/icon.svg", sizes:"512x512", type:"image/svg+xml", purpose:"any maskable"}]
- })
+ res.json({name:"Lifeline Investments",short_name:"Lifeline",start_url:"/",display:"standalone",background_color:"#000000",theme_color:"#FFD700",icons:[{src:"/icon.svg", sizes:"512x512", type:"image/svg+xml", purpose:"any maskable"}]})
 });
-app.get('/sw.js',(req,res)=>{
- res.set('Content-Type','application/javascript');
- res.send(`self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>self.clients.claim());self.addEventListener('fetch',e=>e.respondWith(fetch(e.request).catch(()=>caches.match(e.request))));`);
-});
+app.get('/sw.js',(req,res)=>{ res.set('Content-Type','application/javascript'); res.send(`self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>self.clients.claim());self.addEventListener('fetch',e=>e.respondWith(fetch(e.request).catch(()=>caches.match(e.request))));`);});
 
 app.post('/api/register',async(req,res)=>{ try{ const code='LIFE'+Math.random().toString(36).slice(2,6).toUpperCase(); await db.query("INSERT INTO users (fullName,phone,password,myReferralCode,referredBy,balance,referralBonus) VALUES (?,?,?,?,?,0,0)",[req.body.name,req.body.phone,req.body.password,code,req.body.ref||null]); const[r]=await db.query("SELECT * FROM users WHERE phone=? ORDER BY id DESC LIMIT 1",[req.body.phone]); res.json(r[0]); }catch(e){res.status(400).json({error:e.message})} });
 app.post('/api/login',async(req,res)=>{ const[r]=await db.query("SELECT * FROM users WHERE phone=? AND password=? ORDER BY id DESC",[req.body.phone,req.body.password]); if(r.length) res.json(r[0]); else res.status(401).json({error:"Wrong"}); });
@@ -59,6 +48,8 @@ app.post('/api/admin/reject/:id',async(req,res)=>{ if(req.query.key!==ADMIN_KEY)
 app.get('/api/admin/withdraws',async(req,res)=>{ if(req.query.key!==ADMIN_KEY) return res.status(401).json([]); const[r]=await db.query("SELECT w.*, u.phone FROM withdrawals w JOIN users u ON w.userId=u.id WHERE w.status='pending' ORDER BY id DESC"); res.json(r); });
 app.post('/api/admin/withdraw/:id',async(req,res)=>{ if(req.query.key!==ADMIN_KEY) return res.status(401).json({}); if(req.body.action==='approve') await db.query("UPDATE withdrawals SET status='approved' WHERE id=?",[req.params.id]); else await db.query("UPDATE withdrawals SET status='rejected' WHERE id=?",[req.params.id]); res.json({ok:1}); });
 app.get('/api/admin/invests',async(req,res)=>{ if(req.query.key!==ADMIN_KEY) return res.status(401).json([]); const[r]=await db.query("SELECT i.*, u.phone, u.fullName FROM investments i JOIN users u ON i.userId=u.id ORDER BY i.id DESC LIMIT 100"); res.json(r); });
+// NEW: PENDING COUNT FOR NOTIFICATIONS
+app.get('/api/admin/pending-count',async(req,res)=>{ if(req.query.key!==ADMIN_KEY) return res.status(401).json({}); const[d]=await db.query("SELECT COUNT(*) as c FROM deposits WHERE status='pending'"); const[w]=await db.query("SELECT COUNT(*) as c FROM withdrawals WHERE status='pending'"); res.json({deposits:d[0].c, withdraws:w[0].c, total:d[0].c+w[0].c}); });
 
 const PWA_HEAD = `<link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#FFD700"><link rel="icon" type="image/svg+xml" href="/icon.svg"><script>if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js')</script>`;
 
@@ -96,13 +87,49 @@ async function load(){
 load()
 </script></body></html>`,
 referral: `<html><head><meta name="viewport" content="width=device-width,initial-scale=1">${PWA_HEAD}<style>body{background:#000;color:#fff;padding:15px;font-family:Arial}a{color:gold}.card{background:#111;padding:15px;border-radius:12px;margin:10px 0;text-align:center}button{width:100%;padding:12px;border-radius:8px;border:none;background:gold;font-weight:bold;margin:5px 0}input{width:100%;padding:12px;border-radius:8px;border:none;background:#222;color:#fff;text-align:center}</style></head><body><a href="/dashboard">Back</a><h2>My Referral Team</h2><div class="card"><h3 style="color:gold">Code: <span id="code">---</span></h3><p>Bonus: <span id="bonus" style="color:#0f0">0</span></p><p>Team: <span id="count">0</span></p><input id="link" readonly><button onclick="copy()">Copy Link</button><button onclick="share()" style="background:#25D366">Share WhatsApp</button><button style="background:#0088cc;color:#fff" onclick="window.open('TG_LINK_PLACE')">Join Telegram Care Group</button></div><div id="team"></div><script>let uid=localStorage.getItem("uid");async function load(){let r=await fetch("/api/team/"+uid);let j=await r.json();code.textContent=j.code;bonus.textContent=(j.bonus||0)+" UGX";count.textContent=j.count;let url=location.origin+"/?ref="+j.code;link.value=url;let html="";if(j.team.length==0)html="<p>No team yet</p>";else for(let t of j.team){html+="<div class=card style=text-align:left><b>"+(t.fullName||t.phone)+"</b><br>"+t.phone+"<br>"+(t.balance||0)+" UGX</div>"}team.innerHTML=html}function copy(){link.select();document.execCommand("copy");alert("Copied!")}function share(){let m="Join Lifeline! Code "+code.textContent+" Link: "+link.value; window.open("https://wa.me/?text="+encodeURIComponent(m))}load()</script></body></html>`,
-admin: `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#000;color:#fff;padding:15px;font-family:Arial}input,button{width:100%;padding:10px;margin:5px 0;border-radius:8px;border:none}button{background:gold;font-weight:bold}.tab{padding:10px;background:#222;display:inline-block;margin:5px;border-radius:5px;cursor:pointer}.active{background:gold;color:#000}.usercard{background:#222;padding:12px;margin:8px 0;border-radius:10px}</style></head><body><div id="loginBox"><h2>Admin</h2><input id="pass" type="password" placeholder="LIFELINE123"><button onclick="check()">Unlock</button></div><div id="adminBox" style="display:none"><h2>ADMIN - REJECT FAKE ADDED</h2><div><span class="tab active" id="t1" onclick="showTab('dep')">Deposits</span><span class="tab" id="t2" onclick="showTab('with')">Withdraws</span><span class="tab" id="t3" onclick="showTab('users')">Users</span><span class="tab" id="t4" onclick="showTab('inv')">Invests</span></div><div id="depBox"><div id="l">Loading</div></div><div id="withBox" style="display:none"><div id="lw">Loading</div></div><div id="usersBox" style="display:none"><input id="search" placeholder="Search phone or name"><button onclick="loadUsers()">Search Users</button><div id="lu"></div></div><div id="invBox" style="display:none"><div id="linv">Loading</div></div></div><script>
-const AP="LIFELINE123";let en="";function check(){if(pass.value===AP){en=pass.value;loginBox.style.display="none";adminBox.style.display="block";ld()}}function showTab(t){depBox.style.display=t==='dep'?'block':'none';withBox.style.display=t==='with'?'block':'none';usersBox.style.display=t==='users'?'block':'none';invBox.style.display=t==='inv'?'block':'none';document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));if(t==='dep'){t1.classList.add('active');ld()}if(t==='with'){t2.classList.add('active');lw()}if(t==='users'){t3.classList.add('active');loadUsers()}if(t==='inv'){t4.classList.add('active');loadInvs()}}
-async function ld(){let r=await fetch("/api/admin/deposits?key="+en);let d=await r.json();let e=document.getElementById("l");if(!d.length)e.innerHTML="No pending deposits";else{let h="";for(let x of d){h+="<div id=r-"+x.id+" style=background:#222;padding:12px;margin:10px 0;border-radius:10px><b>"+x.phone+"</b> "+x.amount+" UGX<br>From: "+x.airtelNo+"<br>"+(x.screenshot?"<img src="+x.screenshot+" style=width:100%;border-radius:8px>":"No screenshot")+"<br><div style=display:flex;gap:8px><button onclick=ap("+x.id+") style=background:#0f0>✅ Approve</button><button onclick=rj("+x.id+") style=background:red;color:#fff>❌ Reject Fake</button></div></div>"}e.innerHTML=h}}
-async function ap(id){await fetch("/api/admin/approve/"+id+"?key="+en,{method:"POST"});document.getElementById("r-"+id).remove()}
-async function rj(id){if(!confirm("Reject this deposit as FAKE? User will see REJECTED.")) return; await fetch("/api/admin/reject/"+id+"?key="+en,{method:"POST"});document.getElementById("r-"+id).remove()}
-async function lw(){let r=await fetch("/api/admin/withdraws?key="+en);let d=await r.json();let e=document.getElementById("lw");if(!d.length)e.innerHTML="No pending withdraws";else{let h="";for(let x of d){h+="<div id=w-"+x.id+" style=background:#222;padding:12px;margin:10px 0;border-radius:10px><b>"+x.phone+"</b> wants "+x.amount+" UGX<br><button onclick=aw("+x.id+",'approve')>Approve</button><button style=background:red;color:#fff onclick=aw("+x.id+",'reject')>Reject</button></div>"}e.innerHTML=h}}
-async function aw(id,act){await fetch("/api/admin/withdraw/"+id+"?key="+en,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:act})});document.getElementById("w-"+id).remove()}
+admin: `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin - Lifeline</title><style>body{background:#000;color:#fff;padding:15px;font-family:Arial}input,button{width:100%;padding:10px;margin:5px 0;border-radius:8px;border:none}button{background:gold;font-weight:bold}.tab{padding:10px;background:#222;display:inline-block;margin:5px;border-radius:5px;cursor:pointer;position:relative}.active{background:gold;color:#000}.usercard{background:#222;padding:12px;margin:8px 0;border-radius:10px}.badge{background:red;color:#fff;border-radius:50%;padding:2px 7px;font-size:12px;position:absolute;top:-8px;right:-8px;display:none}.notif-bar{background:#FFD700;color:#000;padding:12px;border-radius:10px;margin:10px 0;display:none;font-weight:bold;text-align:center;animation:blink 1s infinite}@keyframes blink{0%{background:gold}50%{background:orange}100%{background:gold}}</style></head><body>
+<div id="loginBox"><h2>Admin</h2><input id="pass" type="password" placeholder="LIFELINE123"><button onclick="check()">Unlock</button></div>
+<div id="adminBox" style="display:none">
+<h2>ADMIN LIVE 🔔 <span id="totalBadge" style="background:red;padding:5px 10px;border-radius:20px;font-size:14px">0 Pending</span></h2>
+<div style="background:#111;padding:10px;border-radius:10px;margin:10px 0"><label><input type="checkbox" id="soundToggle" checked> 🔔 Sound On</label> <button onclick="requestNotif()" style="width:auto;padding:6px 12px;margin-left:10px;background:#0088cc;color:#fff">Enable Popups</button><p id="lastCheck" style="font-size:11px;color:gray">Last check: now</p></div>
+<div id="liveNotif" class="notif-bar"></div>
+<div><span class="tab active" id="t1" onclick="showTab('dep')">Deposits <span class="badge" id="b1"></span></span><span class="tab" id="t2" onclick="showTab('with')">Withdraws <span class="badge" id="b2"></span></span><span class="tab" id="t3" onclick="showTab('users')">Users</span><span class="tab" id="t4" onclick="showTab('inv')">Invests</span></div>
+<div id="depBox"><div id="l">Loading</div></div><div id="withBox" style="display:none"><div id="lw">Loading</div></div><div id="usersBox" style="display:none"><input id="search" placeholder="Search phone or name"><button onclick="loadUsers()">Search Users</button><div id="lu"></div></div><div id="invBox" style="display:none"><div id="linv">Loading</div></div></div>
+<audio id="notifSound" src="https://notificationsounds.com/storage/sounds/file-sounds-1150-pristine.mp3" preload="auto"></audio>
+<script>
+const AP="LIFELINE123";let en="";let lastTotal=0;let interval;
+function check(){if(pass.value===AP){en=pass.value;loginBox.style.display="none";adminBox.style.display="block";startLive();ld()}}
+function showTab(t){depBox.style.display=t==='dep'?'block':'none';withBox.style.display=t==='with'?'block':'none';usersBox.style.display=t==='users'?'block':'none';invBox.style.display=t==='inv'?'block':'none';document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));if(t==='dep'){t1.classList.add('active');ld()}if(t==='with'){t2.classList.add('active');lw()}if(t==='users'){t3.classList.add('active');loadUsers()}if(t==='inv'){t4.classList.add('active');loadInvs()}}
+function requestNotif(){if("Notification" in window){Notification.requestPermission().then(p=>{alert("Notifications: "+p)})}}
+async function checkPending(){
+ try{
+  let r=await fetch("/api/admin/pending-count?key="+en);let j=await r.json();
+  document.getElementById("totalBadge").textContent=j.total+" Pending";
+  document.title=j.total>0?"("+j.total+") NEW PENDING - Lifeline Admin":"Admin - Lifeline";
+  // badges
+  let b1=document.getElementById("b1");let b2=document.getElementById("b2");
+  if(j.deposits>0){b1.textContent=j.deposits;b1.style.display="inline"}else b1.style.display="none";
+  if(j.withdraws>0){b2.textContent=j.withdraws;b2.style.display="inline"}else b2.style.display="none";
+  document.getElementById("lastCheck").textContent="Last check: "+new Date().toLocaleTimeString()+" - D:"+j.deposits+" W:"+j.withdraws;
+  if(j.total>lastTotal && lastTotal!==0){
+   // NEW PENDING!
+   let bar=document.getElementById("liveNotif");
+   bar.style.display="block";bar.textContent="🔔 NEW PENDING! Deposits:"+j.deposits+" Withdraws:"+j.withdraws+" - REFRESH!";
+   if(document.getElementById("soundToggle").checked){document.getElementById("notifSound").play().catch(e=>{});}
+   if(Notification.permission==="granted"){new Notification("Lifeline Pending!",{body:"Deposits: "+j.deposits+" Withdraws: "+j.withdraws,icon:"/icon.svg"});}
+   // auto reload lists if on that tab
+   if(depBox.style.display!=="none")ld(); if(withBox.style.display!=="none")lw();
+  }
+  lastTotal=j.total;
+ }catch(e){}
+}
+function startLive(){checkPending();interval=setInterval(checkPending,8000); // check every 8 seconds
+}
+async function ld(){let r=await fetch("/api/admin/deposits?key="+en);let d=await r.json();let e=document.getElementById("l");if(!d.length)e.innerHTML="No pending deposits";else{let h="";for(let x of d){h+="<div id=r-"+x.id+" style=background:#222;padding:12px;margin:10px 0;border-radius:10px><b>"+x.phone+"</b> "+x.amount+" UGX<br>From: "+x.airtelNo+"<br>"+(x.screenshot?"<img src="+x.screenshot+" style=width:100%;border-radius:8px>":"No screenshot")+"<br><small>"+new Date(x.createdAt).toLocaleString()+"</small><br><div style=display:flex;gap:8px><button onclick=ap("+x.id+") style=background:#0f0>✅ Approve</button><button onclick=rj("+x.id+") style=background:red;color:#fff>❌ Reject Fake</button></div></div>"}e.innerHTML=h}}
+async function ap(id){await fetch("/api/admin/approve/"+id+"?key="+en,{method:"POST"});document.getElementById("r-"+id).remove();checkPending()}
+async function rj(id){if(!confirm("Reject as FAKE?")) return; await fetch("/api/admin/reject/"+id+"?key="+en,{method:"POST"});document.getElementById("r-"+id).remove();checkPending()}
+async function lw(){let r=await fetch("/api/admin/withdraws?key="+en);let d=await r.json();let e=document.getElementById("lw");if(!d.length)e.innerHTML="No pending withdraws";else{let h="";for(let x of d){h+="<div id=w-"+x.id+" style=background:#222;padding:12px;margin:10px 0;border-radius:10px><b>"+x.phone+"</b> wants "+x.amount+" UGX<br><small>"+new Date(x.createdAt).toLocaleString()+"</small><br><button onclick=aw("+x.id+",'approve')>Approve</button><button style=background:red;color:#fff onclick=aw("+x.id+",'reject')>Reject</button></div>"}e.innerHTML=h}}
+async function aw(id,act){await fetch("/api/admin/withdraw/"+id+"?key="+en,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:act})});document.getElementById("w-"+id).remove();checkPending()}
 async function loadUsers(){let q=document.getElementById('search').value;let r=await fetch("/api/admin/users?key="+en+"&search="+encodeURIComponent(q));let d=await r.json();let e=document.getElementById('lu');if(!d.length)e.innerHTML="No users found";else{let h="";for(let u of d){h+="<div class=usercard id=usercard-"+u.id+"><b>"+(u.fullName||'NoName')+"</b><br>Phone: "+u.phone+"<br>Pass: <span style=color:gold>"+u.password+"</span><br>Bal: "+u.balance+" UGX<br>Code: "+u.myReferralCode+"<br><input id=newpass-"+u.id+" placeholder='New Password'><button onclick=resetPass("+u.id+")>Reset Password</button><button style=background:red;color:#fff;margin-top:5px onclick=deleteUser("+u.id+")>DELETE USER</button></div>"}e.innerHTML=h}}
 async function resetPass(id){let np=document.getElementById('newpass-'+id).value;if(!np)return alert('Enter new pass');await fetch("/api/admin/resetpass/"+id+"?key="+en,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({newPass:np})});alert('Password reset to: '+np);loadUsers();}
 async function deleteUser(id){if(!confirm("DELETE user ID "+id+"? Sure?")) return; let r=await fetch("/api/admin/deleteuser/"+id+"?key="+en,{method:"POST"}); let j=await r.json(); if(j.ok){ alert("User Deleted!"); document.getElementById('usercard-'+id).remove(); } else alert(j.error||"Error");}
@@ -118,4 +145,4 @@ app.get('/invest',(req,res)=>render('invest',res));
 app.get('/myinvest',(req,res)=>render('myinvest',res));
 app.get('/referral',(req,res)=>render('referral',res));
 app.get('/admin',(req,res)=>render('admin',res));
-app.listen(process.env.PORT||3000,()=>console.log("LIVE WITH REJECT + GOLD LOGO + 0749166970"));
+app.listen(process.env.PORT||3000,()=>console.log("LIVE WITH ADMIN NOTIFICATIONS"));
