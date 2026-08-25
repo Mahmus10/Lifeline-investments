@@ -6,6 +6,8 @@ app.use(cors());
 app.use(express.json({limit:'50mb'}));
 let db;
 const ADMIN_KEY="LIFELINE123";
+const MERCHANT_CODE="7184154";
+const MERCHANT_NAME="JASCENT LIFELINE INVESTLINE";
 const TEAMS_16 = [{name:'Man Utd',short:'MUN'},{name:'Aston Villa',short:'AVL'},{name:'Crystal Palace',short:'CRY'},{name:'Everton',short:'EVE'},{name:'Tottenham',short:'TOT'},{name:'West Ham',short:'WHU'},{name:'Liverpool',short:'LIV'},{name:'Wolves',short:'WOL'},{name:'Arsenal',short:'ARS'},{name:'Chelsea',short:'CHE'},{name:'Brentford',short:'BRE'},{name:'Brighton',short:'BHA'},{name:'Man City',short:'MCI'},{name:'Fulham',short:'FUL'},{name:'Newcastle',short:'NEW'},{name:'Nottm Forest',short:'NFO'}];
 const CLUBS=[{id:'arsenal',name:'Arsenal',rate:10,lock:10,icon:'🔴'},{id:'mancity',name:'Man City',rate:10,lock:10,icon:'🔵'},{id:'liverpool',name:'Liverpool',rate:10,lock:10,icon:'🔴'},{id:'chelsea',name:'Chelsea',rate:8,lock:8,icon:'🔵'},{id:'manutd',name:'Man Utd',rate:8,lock:8,icon:'🔴'},{id:'tottenham',name:'Tottenham',rate:8,lock:8,icon:'⚪'}];
 
@@ -88,7 +90,7 @@ try{
 const u=process.env.DATABASE_URL||process.env.MYSQL_URL;if(!u)throw new Error("no db");
 db=mysql.createPool(u+"?connectionLimit=10&keepAlive=true");
 await db.query("CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, fullName VARCHAR(100), phone VARCHAR(30), password VARCHAR(100), myReferralCode VARCHAR(20), referredBy VARCHAR(20), balance INT DEFAULT 0, gameBalance INT DEFAULT 0)");
-await db.query("CREATE TABLE IF NOT EXISTS deposits (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, phone VARCHAR(30), amount INT, airtelNo VARCHAR(30), screenshot LONGTEXT, status VARCHAR(20) DEFAULT 'pending', createdAt DATETIME DEFAULT CURRENT_TIMESTAMP)");
+await db.query("CREATE TABLE IF NOT EXISTS deposits (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, phone VARCHAR(30), amount INT, airtelNo VARCHAR(30), screenshot LONGTEXT, screenshotHash VARCHAR(100), status VARCHAR(20) DEFAULT 'pending', createdAt DATETIME DEFAULT CURRENT_TIMESTAMP)");
 await db.query("CREATE TABLE IF NOT EXISTS investments (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, club VARCHAR(50), amount INT, rate INT, lockDays INT, startDate DATETIME DEFAULT CURRENT_TIMESTAMP, status VARCHAR(20) DEFAULT 'active')");
 await db.query("CREATE TABLE IF NOT EXISTS virtual_accas (id INT AUTO_INCREMENT PRIMARY KEY, userId INT, season INT, matchday INT, selections TEXT, amount INT, odd FLOAT, status VARCHAR(20) DEFAULT 'pending', winAmount INT DEFAULT 0, createdAt DATETIME DEFAULT CURRENT_TIMESTAMP)");
 await db.query("UPDATE investments SET rate=10, lockDays=10 WHERE club IN ('arsenal','mancity','liverpool')");
@@ -98,9 +100,9 @@ await db.query("UPDATE investments SET rate=8, lockDays=8 WHERE club IN ('chelse
 init();
 const BG=`body{background:#080a0f;color:#fff;font-family:Arial;padding:12px;padding-bottom:90px}body::before{content:'';position:fixed;inset:-20px;z-index:-3;background-image:linear-gradient(rgba(0,0,0,0.55),rgba(0,0,0,0.75)),url('https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=1200&q=80');background-size:cover;background-position:center}.glass{background:rgba(18,22,35,0.85);backdrop-filter:blur(16px);border:1px solid rgba(255,215,0,0.15)}.top{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10;background:rgba(0,0,0,0.7);border:1px solid gold;padding:6px 18px;border-radius:30px;color:gold;font-size:11px;font-weight:bold}`;
 const pages={
-home:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${BG}input,button{width:100%;padding:14px;margin:8px 0;border-radius:12px;border:none}button{background:gold;font-weight:bold}.card{padding:20px;border-radius:20px}</style></head><body><div class="top">LIFELINE • x2.00</div><div class="card glass" style="margin-top:60px"><h2>Register</h2><input id="n" placeholder="Full Name"><input id="p" placeholder="Phone"><input id="pw" type="password" placeholder="Password"><button onclick="reg()">Register</button><button onclick="log()" style="background:#222;color:#fff">Login</button></div><script>async function reg(){let r=await fetch("/api/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:n.value,phone:p.value,password:pw.value})});let j=await r.json();if(j.id){localStorage.setItem("uid",j.id);location.href="/dashboard"}}async function log(){let r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:p.value,password:pw.value})});let j=await r.json();if(j.id){localStorage.setItem("uid",j.id);location.href="/dashboard"}}</script></body></html>`,
-dash:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${BG}.bal{padding:22px;border-radius:24px;text-align:center}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}.gc{padding:14px;border-radius:16px;text-align:left}button{width:100%;padding:14px;margin:7px 0;border-radius:12px;border:none;font-weight:bold}.gold{background:gold;color:#000}.dark{background:rgba(20,25,35,0.9);color:#fff;border:1px solid rgba(255,255,255,0.1)}.virtCard{background:linear-gradient(135deg,#1a0033,#000033);border:2px solid #ff00cc;padding:16px;border-radius:18px;margin:12px 0}</style></head><body><div class="top">LIFELINE • x2.00</div><div class="bal glass" style="margin-top:60px"><div class="grid"><div class="gc glass"><h4>GAME</h4><h2 id="gb">0</h2><small id="gt" style="color:#aaa"></small></div><div class="gc glass"><h4>INVEST</h4><h2 id="b">0</h2></div></div></div><div class="virtCard" onclick="location.href='/virtual'"><div style="display:flex;justify-content:space-between"><b style="color:#ff00cc">🔥 VIRTUAL MD <span id="mdt">0</span> S<span id="sdt">1</span></b><span id="vp" style="background:#0f0;color:#000;padding:4px 10px;border-radius:20px;font-size:10px">BETTING</span></div><div style="text-align:center;margin-top:8px">⏱️ <span id="vt">02:00</span></div></div><button class="gold" onclick="location.href='/virtual'">⚽ VIRTUAL</button><button class="dark" onclick="location.href='/deposit'">💰 Deposit</button><button class="dark" onclick="location.href='/invest'">📈 INVEST 10% & 8%</button><button class="dark" onclick="location.href='/history'">📜 History</button><button class="dark" onclick="location.href='/referral'">👥 My Team</button><script>let uid=localStorage.getItem("uid");if(!uid)location.href="/";async function load(){let r=await fetch("/api/user/"+uid);let u=await r.json();b.textContent=(u.balance||0).toLocaleString();gb.textContent=(u.gameBalance||0).toLocaleString();gt.textContent="Total: "+((u.balance||0)+(u.gameBalance||0)).toLocaleString();}async function sync(){let r=await fetch("/api/virtual/status");let d=await r.json();mdt.textContent=d.matchday;sdt.textContent=d.season;let tl=d.timeLeft;let ph=d.phase;let disp="";if(ph==='betting')disp=Math.floor(tl/60)+":"+String(tl%60).padStart(2,'0');else if(ph==='first_half')disp="00:"+(45-tl).toString().padStart(2,'0');else if(ph==='halftime')disp="00:0"+tl;else{let tot=45+(45-tl);disp=String(Math.floor(tot/60)).padStart(2,'0')+":"+String(tot%60).padStart(2,'0');}vt.textContent=disp;vp.textContent=ph==='betting'?'BETTING':ph.toUpperCase();}load();sync();setInterval(sync,1000);</script></body></html>`,
-invest:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${BG}.club{background:rgba(25,30,45,0.9);border:1px solid rgba(255,215,0,0.2);border-radius:16px;padding:16px;margin:10px 0;display:flex;justify-content:space-between;align-items:center}.invCard{background:rgba(0,100,0,0.2);border:1px solid #0f0;border-radius:12px;padding:12px;margin:8px 0}input,button{width:100%;padding:14px;margin:8px 0;border-radius:10px;border:none}button{background:gold;font-weight:900}.back{color:gold;text-decoration:none;display:inline-block;margin-top:60px}</style></head><body><div class="top">INVEST • 10% & 8%</div><a href="/dashboard" class="back">← Back</a><h2>📈 Invest</h2><div style="background:rgba(0,0,0,0.6);padding:12px;border-radius:12px;margin:10px 0"><div>Invest Wallet: <b id="bal" style="color:gold">0</b> UGX</div></div><div id="clubs"></div><h3>My Active</h3><div id="myInv">Loading...</div><script>
+home:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${BG}input,button{width:100%;padding:14px;margin:8px 0;border-radius:12px;border:none}button{background:gold;font-weight:bold}.card{padding:20px;border-radius:20px}</style></head><body><div class="top">LIFELINE • x2.00</div><div class="card glass" style="margin-top:60px"><h2>Register - ${MERCHANT_NAME}</h2><input id="n" placeholder="Full Name"><input id="p" placeholder="Phone"><input id="pw" type="password" placeholder="Password"><button onclick="reg()">Register</button><button onclick="log()" style="background:#222;color:#fff">Login</button></div><script>async function reg(){let r=await fetch("/api/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:n.value,phone:p.value,password:pw.value})});let j=await r.json();if(j.id){localStorage.setItem("uid",j.id);location.href="/dashboard"}}async function log(){let r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:p.value,password:pw.value})});let j=await r.json();if(j.id){localStorage.setItem("uid",j.id);location.href="/dashboard"}}</script></body></html>`,
+dash:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${BG}.bal{padding:22px;border-radius:24px;text-align:center}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}.gc{padding:14px;border-radius:16px;text-align:left}button{width:100%;padding:14px;margin:7px 0;border-radius:12px;border:none;font-weight:bold}.gold{background:gold;color:#000}.dark{background:rgba(20,25,35,0.9);color:#fff;border:1px solid rgba(255,255,255,0.1)}.virtCard{background:linear-gradient(135deg,#1a0033,#000033);border:2px solid #ff00cc;padding:16px;border-radius:18px;margin:12px 0}</style></head><body><div class="top">JASCENT LIFELINE • x2.00</div><div class="bal glass" style="margin-top:60px"><div style="font-size:11px;color:gold;letter-spacing:1px">MERCHANT ${MERCHANT_CODE} - ${MERCHANT_NAME}</div><div class="grid"><div class="gc glass"><h4>GAME</h4><h2 id="gb">0</h2><small id="gt" style="color:#aaa"></small></div><div class="gc glass"><h4>INVEST</h4><h2 id="b">0</h2></div></div></div><div class="virtCard" onclick="location.href='/virtual'"><div style="display:flex;justify-content:space-between"><b style="color:#ff00cc">🔥 VIRTUAL MD <span id="mdt">0</span> S<span id="sdt">1</span></b><span id="vp" style="background:#0f0;color:#000;padding:4px 10px;border-radius:20px;font-size:10px">BETTING</span></div><div style="text-align:center;margin-top:8px">⏱️ <span id="vt">02:00</span></div></div><button class="gold" onclick="location.href='/virtual'">⚽ VIRTUAL - Next BET OPEN</button><button class="dark" onclick="location.href='/deposit'">💰 Deposit to ${MERCHANT_CODE}</button><button class="dark" onclick="location.href='/invest'">📈 INVEST 10% & 8%</button><button class="dark" onclick="location.href='/history'">📜 History</button><button class="dark" onclick="location.href='/referral'">👥 My Team</button><script>let uid=localStorage.getItem("uid");if(!uid)location.href="/";async function load(){let r=await fetch("/api/user/"+uid);let u=await r.json();b.textContent=(u.balance||0).toLocaleString();gb.textContent=(u.gameBalance||0).toLocaleString();gt.textContent="Total: "+((u.balance||0)+(u.gameBalance||0)).toLocaleString();}async function sync(){let r=await fetch("/api/virtual/status");let d=await r.json();mdt.textContent=d.matchday;sdt.textContent=d.season;let tl=d.timeLeft;let ph=d.phase;let disp="";if(ph==='betting')disp=Math.floor(tl/60)+":"+String(tl%60).padStart(2,'0');else if(ph==='first_half')disp="00:"+(45-tl).toString().padStart(2,'0');else if(ph==='halftime')disp="00:0"+tl;else{let tot=45+(45-tl);disp=String(Math.floor(tot/60)).padStart(2,'0')+":"+String(tot%60).padStart(2,'0');}vt.textContent=disp;vp.textContent=ph==='betting'?'BETTING':ph.toUpperCase();}load();sync();setInterval(sync,1000);</script></body></html>`,
+invest:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${BG}.club{background:rgba(25,30,45,0.9);border:1px solid rgba(255,215,0,0.2);border-radius:16px;padding:16px;margin:10px 0;display:flex;justify-content:space-between;align-items:center}.invCard{background:rgba(0,100,0,0.2);border:1px solid #0f0;border-radius:12px;padding:12px;margin:8px 0}input,button{width:100%;padding:14px;margin:8px 0;border-radius:10px;border:none}button{background:gold;font-weight:900}.back{color:gold;text-decoration:none;display:inline-block;margin-top:60px}</style></head><body><div class="top">INVEST • 10% & 8%</div><a href="/dashboard" class="back">← Back</a><h2>📈 Invest</h2><div style="background:rgba(0,0,0,0.6);padding:12px;border-radius:12px;margin:10px 0"><div>Invest Wallet: <b id="bal" style="color:gold">0</b> UGX - Merchant ${MERCHANT_CODE}</div></div><div id="clubs"></div><h3>My Active</h3><div id="myInv">Loading...</div><script>
 let uid=localStorage.getItem("uid");
 const CLUBS=[{id:'arsenal',name:'Arsenal',rate:10,lock:10,icon:'🔴'},{id:'mancity',name:'Man City',rate:10,lock:10,icon:'🔵'},{id:'liverpool',name:'Liverpool',rate:10,lock:10,icon:'🔴'},{id:'chelsea',name:'Chelsea',rate:8,lock:8,icon:'🔵'},{id:'manutd',name:'Man Utd',rate:8,lock:8,icon:'🔴'},{id:'tottenham',name:'Tottenham',rate:8,lock:8,icon:'⚪'}];
 async function load(){
@@ -202,10 +204,115 @@ if(currentBetMD===0)currentBetMD=d.phase==='betting'?d.matchday:d.nextMD;
 }
 sync();setInterval(sync,1000);
 </script></body></html>`,
-deposit:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${BG}input,button{width:100%;padding:14px;margin:8px 0;border-radius:10px;border:none}button{background:gold;font-weight:bold}</style></head><body><div class="top">DEPOSIT</div><a href="/dashboard" style="color:gold;margin-top:60px;display:inline-block">← Back</a><h2>Deposit</h2><input id="am" placeholder="Amount"><input id="air" placeholder="Airtel"><input type="file" id="file"><button onclick="dep()">Submit</button><script>let uid=localStorage.getItem("uid");let b64="";file.addEventListener("change",e=>{let r=new FileReader();r.onload=()=>{b64=r.result};r.readAsDataURL(e.target.files[0])});async function dep(){let r=await fetch("/api/deposit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:uid,amount:am.value,airtelNo:air.value,screenshot:b64})});let j=await r.json();if(j.ok)location.href="/dashboard"}</script></body></html>`,
+deposit:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+${BG}
+.merchantBox{background:linear-gradient(135deg,#1a1a00,#2a2a00);border:2px solid gold;border-radius:16px;padding:16px;margin:16px 0;text-align:center}
+.merchantCode{font-size:32px;font-weight:900;color:gold;letter-spacing:2px;margin:8px 0}
+.stepBox{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px;margin:10px 0}
+input,button{width:100%;padding:14px;margin:8px 0;border-radius:12px;border:none;box-sizing:border-box}
+input{background:#111;color:#fff;border:1px solid #333}
+button{background:gold;font-weight:900;color:#000;font-size:16px}
+.warn{color:#ff4444;font-size:12px;background:rgba(255,0,0,0.1);border:1px solid #f44;padding:8px;border-radius:8px;margin:8px 0}
+</style></head><body>
+<div class="top">DEPOSIT • ${MERCHANT_CODE}</div>
+<a href="/dashboard" style="color:gold;margin-top:60px;display:inline-block;text-decoration:none;font-weight:bold">← Back to Dashboard</a>
+
+<h2 style="margin:16px 0 8px 0">💰 Deposit Funds</h2>
+
+<div class="merchantBox">
+<div style="font-size:12px;color:#aaa;letter-spacing:1px">AIRTEL MERCHANT CODE</div>
+<div class="merchantCode">${MERCHANT_CODE}</div>
+<div style="font-size:16px;color:#fff;font-weight:900;margin:4px 0">${MERCHANT_NAME}</div>
+<div style="font-size:11px;color:#0f0;margin-top:6px">✅ Deposits usable for Virtual + Invest</div>
+<button onclick="copyCode()" style="background:#222;color:gold;border:1px solid gold;padding:8px;margin-top:10px;font-size:12px">📋 Copy Merchant Code</button>
+</div>
+
+<div class="stepBox">
+<h4 style="margin:0 0 8px 0;color:gold">📱 How to Deposit:</h4>
+<div style="font-size:13px;line-height:1.6;color:#ddd">
+1. Dial <b style="color:#fff">*185*9#</b> on Airtel<br>
+2. Enter Merchant Code: <b style="color:gold">${MERCHANT_CODE}</b><br>
+3. Business Name: <b style="color:#0f0">${MERCHANT_NAME}</b><br>
+4. Enter Amount (min 1000)<br>
+5. Enter PIN to confirm<br>
+6. Screenshot confirmation SMS<br>
+7. Upload screenshot below
+</div>
+</div>
+
+<div class="glass" style="padding:16px;border-radius:16px;margin:14px 0">
+<label style="font-size:12px;color:#aaa">Amount you sent (UGX)</label>
+<input id="am" type="number" placeholder="e.g. 10000">
+<label style="font-size:12px;color:#aaa">Your Airtel Number (that you used to pay)</label>
+<input id="air" placeholder="e.g. 0750XXXXXX">
+<label style="font-size:12px;color:#aaa">Payment Screenshot (proof) - No reuse!</label>
+<input type="file" id="file" accept="image/*">
+<div id="fileName" style="font-size:11px;color:#0f0;margin:4px 0"></div>
+<div class="warn">⚠️ Same screenshot cannot be used twice! System blocks repeated screenshots.</div>
+<button onclick="dep()" id="subBtn">✅ Submit Deposit to ${MERCHANT_CODE}</button>
+<div id="msg" style="font-size:13px;text-align:center;margin:8px 0"></div>
+</div>
+
+<div id="myDeps" style="margin-top:20px"><h3 style="color:gold">My Recent Deposits</h3><div id="depList" style="font-size:12px;color:#aaa">Loading...</div></div>
+
+<script>
+let uid=localStorage.getItem("uid");
+let b64="";let fileHash="";
+file.addEventListener("change", e=>{
+ let f=e.target.files[0];
+ if(!f)return;
+ fileName.textContent="Selected: "+f.name+" ("+Math.round(f.size/1024)+"KB)";
+ let r=new FileReader();
+ r.onload=()=>{
+  b64=r.result;
+  let str=b64.substring(0,200);
+  let hash=0;for(let i=0;i<str.length;i++){hash=((hash<<5)-hash)+str.charCodeAt(i);hash=hash&hash;}
+  fileHash=Math.abs(hash).toString()+b64.length;
+ };
+ r.readAsDataURL(f);
+});
+function copyCode(){navigator.clipboard.writeText("${MERCHANT_CODE}");alert("Merchant ${MERCHANT_CODE} - ${MERCHANT_NAME} copied!");}
+async function loadDeps(){
+ try{
+  let r=await fetch("/api/deposits/"+uid);
+  let d=await r.json();
+  if(!d.length){depList.innerHTML='<div style="color:#666">No deposits yet</div>';return;}
+  let h="";d.slice(0,5).forEach(x=>{
+   let col=x.status==='pending'?'#ff0':x.status==='approved'?'#0f0':'#f44';
+   h+='<div style="background:#1a1a1a;padding:10px;margin:6px 0;border-radius:8px;display:flex;justify-content:space-between"><span>'+x.amount+' UGX - '+x.airtelNo+'</span><span style="color:'+col+'">'+x.status.toUpperCase()+'</span></div>';
+  });
+  depList.innerHTML=h;
+ }catch(e){}
+}
+async function dep(){
+ let amt=am.value.trim();
+ let airtel=air.value.trim();
+ if(!amt||parseInt(amt)<1000){msg.textContent="Min 1000 UGX";msg.style.color="#f44";return;}
+ if(!airtel||airtel.length<10){msg.textContent="Enter valid Airtel number";msg.style.color="#f44";return;}
+ if(!b64){msg.textContent="Please upload screenshot proof!";msg.style.color="#f44";return;}
+ subBtn.textContent="Submitting...";subBtn.disabled=true;
+ try{
+  let r=await fetch("/api/deposit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:uid,amount:parseInt(amt),airtelNo:airtel,screenshot:b64,screenshotHash:fileHash})});
+  let j=await r.json();
+  if(j.ok){
+   msg.textContent="✅ Submitted to ${MERCHANT_CODE}! Admin will approve shortly. Usable for Virtual after approval.";
+   msg.style.color="#0f0";
+   setTimeout(()=>{location.href="/dashboard";},1500);
+  } else {
+   msg.textContent="❌ "+(j.error||"Failed");
+   msg.style.color="#f44";
+   subBtn.textContent="✅ Submit Deposit";subBtn.disabled=false;
+  }
+ }catch(e){
+  msg.textContent="Network error: "+e.message;msg.style.color="#f44";
+  subBtn.textContent="✅ Submit Deposit";subBtn.disabled=false;
+ }
+}
+loadDeps();
+</script></body></html>`,
 history:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${BG}.card{background:#1a1f2e;border:1px solid gold;padding:14px;margin:8px 0;border-radius:12px;display:flex;justify-content:space-between}a{color:gold}</style></head><body><div class="top">HISTORY</div><div style="margin-top:60px"><a href="/dashboard">← Back</a><h2>History</h2><div id="list">Loading...</div></div><script>let uid=localStorage.getItem("uid");async function load(){let r=await fetch("/api/history/"+uid);let d=await r.json();let h="";for(let t of d){h+="<div class=card><span>"+t.type+" "+(t.amount||0)+" x"+(t.odd||'')+"</span><span>"+(t.status||'')+" MD"+(t.matchday||'')+"</span></div>";}document.getElementById('list').innerHTML=h||"No data";}load()</script></body></html>`,
 referral:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${BG}.card{padding:15px;border-radius:12px;margin:10px 0;text-align:center}button{width:100%;padding:12px;border-radius:8px;border:none;background:gold;font-weight:bold;margin:5px 0}input{width:100%;padding:12px;border-radius:8px;border:none;background:#111;color:#fff;text-align:center}a{color:gold}</style></head><body><div class="top">TEAM</div><div style="margin-top:60px"><a href="/dashboard">Back</a><h2>My Team</h2><div class="card glass"><h3>Code: <span id="code">---</span></h3><input id="link" readonly><button onclick="copy()">Copy</button></div><div id="team"></div></div><script>let uid=localStorage.getItem("uid");async function load(){let r=await fetch("/api/team/"+uid);let j=await r.json();code.textContent=j.code;link.value=location.origin+"/?ref="+j.code;let html="";for(let t of j.team){html+="<div class=card glass style=text-align:left>"+t.phone+"</div>"}team.innerHTML=html||"No team";}function copy(){link.select();document.execCommand("copy");alert("Copied!")}load()</script></body></html>`,
-admin:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin</title><style>body{background:#000;color:#fff;padding:15px;font-family:Arial}input,button{width:100%;padding:10px;margin:5px 0;border-radius:8px;border:none}button{background:gold;font-weight:bold}.card{background:#111;padding:12px;margin:8px 0;border-radius:10px;border-left:4px solid gold}</style></head><body><div id="loginBox"><h2>Admin</h2><input id="pass" type="password" placeholder="LIFELINE123"><button onclick="check()">Unlock</button></div><div id="adminBox" style="display:none"><h2>S<span id="sAdmin">1</span> MD <span id="mdAdmin">1</span> → Next <span id="nAdmin">2</span></h2><button onclick="resetMD()" style="background:red;color:#fff">RESET</button><div id="l">Loading...</div></div><script>const AP="LIFELINE123";let en="";function check(){if(pass.value===AP){en=pass.value;loginBox.style.display="none";adminBox.style.display="block";loadVirt();}}async function loadVirt(){let r=await fetch("/api/admin/virtual?key="+en);let d=await r.json();mdAdmin.textContent=d.currentMD||0;sAdmin.textContent=d.season||1;nAdmin.textContent=d.nextMD||0;l.innerHTML=(d.accas||[]).slice(0,20).map(a=>"<div class=card>MD"+a.matchday+" "+a.phone+" x"+(a.odd||0)+" "+a.amount+" "+a.status+"</div>").join('');}async function resetMD(){if(confirm("Reset?")){await fetch("/api/admin/reset-md?key="+en,{method:"POST"});alert("Reset!");loadVirt();}}</script></body></html>`
+admin:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin ${MERCHANT_CODE}</title><style>body{background:#000;color:#fff;padding:15px;font-family:Arial}input,button{width:100%;padding:10px;margin:5px 0;border-radius:8px;border:none}button{background:gold;font-weight:bold}.card{background:#111;padding:12px;margin:8px 0;border-radius:10px;border-left:4px solid gold}img{max-width:100%;border-radius:8px;margin-top:8px}</style></head><body><div id="loginBox"><h2>Admin - ${MERCHANT_CODE} ${MERCHANT_NAME}</h2><input id="pass" type="password" placeholder="LIFELINE123"><button onclick="check()">Unlock</button></div><div id="adminBox" style="display:none"><h2>S<span id="sAdmin">1</span> MD <span id="mdAdmin">1</span> → Next <span id="nAdmin">2</span> | ${MERCHANT_CODE}</h2><button onclick="resetMD()" style="background:red;color:#fff">RESET SEASON</button><h3 style="color:gold">Deposits - ${MERCHANT_CODE} (block dup screenshots)</h3><div id="depAdmin">Loading...</div><h3 style="color:gold">Virtual Bets</h3><div id="l">Loading...</div></div><script>const AP="LIFELINE123";let en="";function check(){if(pass.value===AP){en=pass.value;loginBox.style.display="none";adminBox.style.display="block";loadAll();}}async function loadAll(){loadVirt();loadDeps();}async function loadVirt(){let r=await fetch("/api/admin/virtual?key="+en);let d=await r.json();mdAdmin.textContent=d.currentMD||0;sAdmin.textContent=d.season||1;nAdmin.textContent=d.nextMD||0;l.innerHTML=(d.accas||[]).slice(0,20).map(a=>"<div class=card>MD"+a.matchday+" "+a.phone+" x"+(a.odd||0)+" "+a.amount+" "+a.status+"</div>").join('');}async function loadDeps(){let r=await fetch("/api/admin/deposits?key="+en);let d=await r.json();depAdmin.innerHTML=d.map(x=>'<div class=card><div style="display:flex;justify-content:space-between"><b>'+x.phone+' - '+x.amount+' UGX to ${MERCHANT_CODE}</b><span style="color:'+(x.status==='pending'?'#ff0':'#0f0')+'">'+x.status+'</span></div><div>AirtelNo: '+x.airtelNo+'</div><div style="font-size:11px;color:#aaa">Hash: '+(x.screenshotHash||'old')+' | '+(x.createdAt||'')+'</div><img src="'+x.screenshot+'" style="max-height:200px"/><div style="display:flex;gap:6px;margin-top:8px"><button onclick="approveDep('+x.id+','+x.userId+','+x.amount+')" style="background:#0f0">Approve + Add Balance (Game+Invest)</button><button onclick="rejectDep('+x.id+')" style="background:#f44">Reject</button></div></div>').join('')||'No deposits';}async function approveDep(id,uid,amt){if(!confirm("Approve "+amt+" to ${MERCHANT_CODE}?"))return;await fetch("/api/admin/approve-deposit?key="+en,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,userId:uid,amount:amt})});loadDeps();}async function rejectDep(id){await fetch("/api/admin/reject-deposit?key="+en,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})});loadDeps();}async function resetMD(){if(confirm("Reset season?")){await fetch("/api/admin/reset-md?key="+en,{method:"POST"});alert("Reset!");loadAll();}}</script></body></html>`
 };
 function render(n,res){res.send(pages[n]);}
 app.get('/',(req,res)=>render('home',res));
@@ -221,6 +328,8 @@ res.json({season,matchday:matchday+1,nextMD:(matchday+1)%15+1,phase:virtualPhase
 });
 app.get('/api/virtual/results',(req,res)=>{res.json(pastResults);});
 app.get('/api/investments/:id',async(req,res)=>{try{const[rows]=await db.query("SELECT * FROM investments WHERE userId=? ORDER BY id DESC",[req.params.id]);res.json(rows);}catch(e){res.json([]);}});
+app.get('/api/deposits/:id',async(req,res)=>{try{const[rows]=await db.query("SELECT * FROM deposits WHERE userId=? ORDER BY id DESC LIMIT 10",[req.params.id]);res.json(rows);}catch(e){res.json([]);}});
+
 app.post('/api/virtual/bet/acca',async(req,res)=>{
 try{
 const{userId,amount,selections,betMD}=req.body;
@@ -244,14 +353,33 @@ await db.query("INSERT INTO virtual_accas (userId,season,matchday,selections,amo
 res.json({ok:1,odd,md:targetMD});
 }catch(e){res.status(400).json({error:e.message})}
 });
+
 app.post('/api/register',async(req,res)=>{try{const code='LIFE'+Math.random().toString(36).slice(2,6).toUpperCase();await db.query("INSERT INTO users (fullName,phone,password,myReferralCode,referredBy,balance,gameBalance) VALUES (?,?,?,?,?,0,0)",[req.body.name,req.body.phone,req.body.password,code,req.body.ref||null]);const[r]=await db.query("SELECT * FROM users WHERE phone=? ORDER BY id DESC LIMIT 1",[req.body.phone]);res.json(r[0]);}catch(e){res.status(400).json({error:e.message})}});
 app.post('/api/login',async(req,res)=>{try{const[r]=await db.query("SELECT * FROM users WHERE phone=? AND password=?",[req.body.phone,req.body.password]);if(r.length)res.json(r[0]);else res.status(401).json({error:"Wrong"});}catch(e){res.status(401).json({error:"Wrong"})}});
 app.get('/api/user/:id',async(req,res)=>{try{const[u]=await db.query("SELECT * FROM users WHERE id=?",[req.params.id]);if(!u.length)return res.json({balance:0,gameBalance:0});res.json({...u[0]});}catch(e){res.json({balance:0,gameBalance:0});}});
-app.post('/api/deposit',async(req,res)=>{try{const{userId,amount,airtelNo,screenshot}=req.body;const[u]=await db.query("SELECT phone FROM users WHERE id=?",[userId]);await db.query("INSERT INTO deposits (userId,phone,amount,airtelNo,screenshot) VALUES (?,?,?,?,?)",[userId,u[0]?u[0].phone:"",parseInt(amount),airtelNo,screenshot]);res.json({ok:1});}catch(e){res.status(400).json({error:e.message})}});
+
+app.post('/api/deposit',async(req,res)=>{
+try{
+const{userId,amount,airtelNo,screenshot,screenshotHash}=req.body;
+if(!screenshot)return res.status(400).json({error:"Screenshot required!"});
+const hash=screenshotHash|| (screenshot.substring(0,100)+screenshot.length);
+const[dup]=await db.query("SELECT id FROM deposits WHERE screenshotHash=? LIMIT 1",[hash]);
+if(dup.length>0)return res.status(400).json({error:"This screenshot already used! Upload different proof for merchant ${MERCHANT_CODE}."});
+const[dup2]=await db.query("SELECT id FROM deposits WHERE screenshot=? LIMIT 1",[screenshot]);
+if(dup2.length>0)return res.status(400).json({error:"Duplicate screenshot blocked!"});
+const[u]=await db.query("SELECT phone FROM users WHERE id=?",[userId]);
+await db.query("INSERT INTO deposits (userId,phone,amount,airtelNo,screenshot,screenshotHash) VALUES (?,?,?,?,?,?)",[userId,u[0]?u[0].phone:"",parseInt(amount),airtelNo,screenshot,hash]);
+res.json({ok:1});
+}catch(e){res.status(400).json({error:e.message})}
+});
+
 app.post('/api/invest',async(req,res)=>{try{const{userId,club,amount}=req.body;if(amount<2000)return res.status(400).json({error:"Min 2000"});const[u]=await db.query("SELECT balance FROM users WHERE id=?",[userId]);if(!u[0]||u[0].balance<amount)return res.status(400).json({error:"No invest wallet"});await db.query("UPDATE users SET balance=balance-? WHERE id=?",[amount,userId]);let rate=CLUBS.find(c=>c.id===club)?.rate||10;let lock=CLUBS.find(c=>c.id===club)?.lock||10;await db.query("INSERT INTO investments (userId,club,amount,rate,lockDays) VALUES (?,?,?,?,?)",[userId,club,amount,rate,lock]);res.json({ok:1});}catch(e){res.status(400).json({error:e.message})}});
 app.get('/api/history/:id',async(req,res)=>{try{const uid=req.params.id;const[deps]=await db.query("SELECT id,amount,status,createdAt,'deposit' as type,0 as odd,0 as matchday FROM deposits WHERE userId=?",[uid]);const[accas]=await db.query("SELECT id,amount,status,createdAt,'acca' as type,odd,matchday FROM virtual_accas WHERE userId=?",[uid]);const[invs]=await db.query("SELECT id,amount,status,createdAt,'invest' as type,0 as odd,0 as matchday FROM investments WHERE userId=?",[uid]);let all=[...deps,...accas,...invs].sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));res.json(all);}catch(e){res.json([])}});
 app.get('/api/team/:id',async(req,res)=>{try{const[u]=await db.query("SELECT * FROM users WHERE id=?",[req.params.id]);const[team]=await db.query("SELECT phone FROM users WHERE referredBy=?",[u[0].myReferralCode]);res.json({code:u[0].myReferralCode,team});}catch(e){res.json({team:[]})}});
+app.get('/api/admin/deposits',async(req,res)=>{if(req.query.key!==ADMIN_KEY)return res.status(401).json([]);try{const[rows]=await db.query("SELECT * FROM deposits ORDER BY id DESC LIMIT 50");res.json(rows);}catch(e){res.json([]);}});
+app.post('/api/admin/approve-deposit',async(req,res)=>{if(req.query.key!==ADMIN_KEY)return res.status(401).json({});try{const{id,userId,amount}=req.body;await db.query("UPDATE deposits SET status='approved' WHERE id=?",[id]);await db.query("UPDATE users SET balance=balance+?, gameBalance=gameBalance+? WHERE id=?",[amount,amount,userId]);res.json({ok:1});}catch(e){res.status(500).json({error:e.message});}});
+app.post('/api/admin/reject-deposit',async(req,res)=>{if(req.query.key!==ADMIN_KEY)return res.status(401).json({});try{await db.query("UPDATE deposits SET status='rejected' WHERE id=?",[req.body.id]);res.json({ok:1});}catch(e){res.status(500).json({error:e.message});}});
 app.get('/api/admin/virtual',async(req,res)=>{if(req.query.key!==ADMIN_KEY)return res.status(401).json({});try{const[r2]=await db.query("SELECT a.*, u.phone FROM virtual_accas a JOIN users u ON a.userId=u.id ORDER BY a.id DESC LIMIT 100");res.json({accas:r2,currentMD:matchday+1,nextMD:(matchday+1)%15+1,season,table:leagueTable});}catch(e){res.json({accas:[],currentMD:matchday+1,nextMD:2,season});}});
 app.post('/api/admin/reset-md',async(req,res)=>{if(req.query.key!==ADMIN_KEY)return res.status(401).json({});matchday=0;season=1;seasonSchedule=generateSeasonSchedule();currentFixtures=getFixturesFor(matchday);nextFixtures=getFixturesFor(matchday+1);virtualPhase='betting';virtualTimeLeft=120;liveFixtures=null;pastResults=[];initTable();res.json({ok:1});});
 app.post('/api/admin/migrate-invest',async(req,res)=>{if(req.query.key!==ADMIN_KEY)return res.status(401).json({});try{let [r1]=await db.query("UPDATE investments SET rate=10, lockDays=10 WHERE club IN ('arsenal','mancity','liverpool')");let [r2]=await db.query("UPDATE investments SET rate=8, lockDays=8 WHERE club IN ('chelsea','manutd','tottenham')");res.json({ok:1,updated:(r1.affectedRows||0)+(r2.affectedRows||0)});}catch(e){res.status(500).json({error:e.message});}});
-app.listen(process.env.PORT||3000,()=>console.log("CLEAN: No mention of reduced 0-0"));
+app.listen(process.env.PORT||3000,()=>console.log("FINAL: Merchant ${MERCHANT_CODE} ${MERCHANT_NAME} + dup block + usable for virtual + balanced"));
