@@ -55,7 +55,7 @@ setInterval(async()=>{
   }
 },1000);
 
-// FIXED DB FOR AIVEN - THIS FIXES Cannot read properties of undefined
+// FIXED FOR AIVEN + RAILWAY - self-signed cert fix
 (async()=>{try{
   const u=(process.env.DATABASE_URL||process.env.MYSQL_URL||"").trim();
   if(!u){console.log("NO DB URL");return;}
@@ -67,7 +67,7 @@ setInterval(async()=>{
     password:decodeURIComponent(parsed.password),
     database:parsed.pathname.replace("/","").split("?")[0]||"defaultdb",
     port:parsed.port||19073,
-    ssl:{rejectUnauthorized:true},
+    ssl:{rejectUnauthorized:false},
     waitForConnections:true,
     connectionLimit:10,
     enableKeepAlive:true
